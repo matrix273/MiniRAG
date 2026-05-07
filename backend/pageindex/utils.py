@@ -287,7 +287,6 @@ class JsonLogger:
             
         current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.filename = f"{pdf_name}_{current_time}.json"
-        os.makedirs("./logs", exist_ok=True)
         # Initialize empty list to store all messages
         self.log_data = []
 
@@ -299,8 +298,8 @@ class JsonLogger:
         # Add new message to the log data
         
         # Write entire log data to file
-        with open(self._filepath(), "w") as f:
-            json.dump(self.log_data, f, indent=2)
+        # with open(self._filepath(), "w") as f:
+        #     json.dump(self.log_data, f, indent=2)
 
     def info(self, message, **kwargs):
         self.log("INFO", message, **kwargs)
