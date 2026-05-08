@@ -13,6 +13,9 @@ import {
 import { chatApi, documentApi } from '@/services/api'
 import type { ChatSession, ChatMessage, Document } from '@/types'
 import ReactMarkdown from 'react-markdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
@@ -132,6 +135,8 @@ const MessageBubble = ({ msg }: { msg: Message }) => {
           ) : (
             <div className="markdown-body" style={{ color: '#1f2937', lineHeight: 1.7 }}>
               <ReactMarkdown
+                remarkPlugins={[remarkMath]}
+                rehypePlugins={[rehypeKatex]}
                 components={{
                   code({ inline, className, children, ...props }: any) {
                     const match = /language-(\w+)/.exec(className || '')
