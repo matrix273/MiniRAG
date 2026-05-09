@@ -1412,8 +1412,10 @@ const ChatPage = () => {
         <>
           {/* Resize Handle */}
           <div
-            onMouseDown={(e) => {
+            onPointerDown={(e) => {
               e.preventDefault()
+              const target = e.currentTarget as HTMLElement
+              target.setPointerCapture(e.pointerId)
               
               const startX = e.clientX
               const container = document.querySelector('.chat-container')
@@ -1421,15 +1423,16 @@ const ChatPage = () => {
               const containerWidth = (container as HTMLElement).offsetWidth
               const startChatWidth = (container as HTMLElement).querySelector('.chat-main-area')?.getBoundingClientRect().width || containerWidth * 0.5
               
-              const handleMouseMove = (moveEvent: MouseEvent) => {
+              const handlePointerMove = (moveEvent: PointerEvent) => {
                 const delta = moveEvent.clientX - startX
                 const newChatWidth = ((startChatWidth + delta) / containerWidth) * 100
                 setChatWidth(Math.max(30, Math.min(80, newChatWidth)))
               }
               
-              const handleMouseUp = () => {
-                document.removeEventListener('mousemove', handleMouseMove)
-                document.removeEventListener('mouseup', handleMouseUp)
+              const handlePointerUp = (upEvent: PointerEvent) => {
+                target.releasePointerCapture(upEvent.pointerId)
+                target.removeEventListener('pointermove', handlePointerMove)
+                target.removeEventListener('pointerup', handlePointerUp)
 
                 // 拖拽结束后刷新 PDF
                 const refreshFn = (window as any).__pdfViewerRefresh
@@ -1438,8 +1441,8 @@ const ChatPage = () => {
                 }
               }
               
-              document.addEventListener('mousemove', handleMouseMove)
-              document.addEventListener('mouseup', handleMouseUp)
+              target.addEventListener('pointermove', handlePointerMove, { passive: true })
+              target.addEventListener('pointerup', handlePointerUp)
             }}
             style={{
               width: 16,
