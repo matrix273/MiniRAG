@@ -962,6 +962,11 @@ const ChatPage = () => {
             onClick={() => {
               setSidebarCollapsed(true)
               localStorage.setItem('chatSidebarCollapsed', JSON.stringify(true))
+              // 折叠后刷新 PDF
+              setTimeout(() => {
+                const refreshFn = (window as any).__pdfViewerRefresh
+                if (refreshFn) refreshFn()
+              }, 100)
             }}
             style={{ color: '#6b7280' }}
           />
@@ -1067,6 +1072,11 @@ const ChatPage = () => {
                   onClick={() => {
                     setSidebarCollapsed(false)
                     localStorage.setItem('chatSidebarCollapsed', JSON.stringify(false))
+                    // 展开后刷新 PDF
+                    setTimeout(() => {
+                      const refreshFn = (window as any).__pdfViewerRefresh
+                      if (refreshFn) refreshFn()
+                    }, 100)
                   }}
                   style={{ marginRight: 4 }}
                 />
@@ -1260,6 +1270,13 @@ const ChatPage = () => {
               } else {
                 setShowPdfOnly(true)
               }
+              // 折叠/展开后刷新 PDF
+              setTimeout(() => {
+                const refreshFn = (window as any).__pdfViewerRefresh
+                if (refreshFn) {
+                  refreshFn()
+                }
+              }, 100)
             }}
             style={{
               position: 'absolute',
