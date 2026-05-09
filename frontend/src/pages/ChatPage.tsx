@@ -331,6 +331,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
         style={{
           width: '100%',
           flex: isUser ? '0 0 auto' : 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: isUser ? 'flex-end' : 'flex-start',
         }}
       >
         {/* Message bubble */}
