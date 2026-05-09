@@ -173,7 +173,7 @@ class ChatService:
         structure_summary = self._extract_structure_summary(doc_structure)
         
         # Build system prompt for reasoning
-        system_prompt = f"""You are a helpful AI assistant answering questions about a document.
+        system_prompt = fr"""You are a helpful AI assistant answering questions about a document.
 Document: {document.original_name}
 Description: {document.doc_description or 'N/A'}
 Pages: {document.page_count or 'N/A'}
@@ -186,9 +186,14 @@ If the question can be answered from the structure summary, do so.
 If you need more specific content, indicate which pages might contain the answer.
 Be concise and accurate.
 
-IMPORTANT: When you need to include mathematical formulas, use the $$ ... $$ format for display formulas.
-For example: $$Attention(Q, K, V) = softmax((QK^T) / sqrt(d_k))V$$
-Do NOT use [ ... ] or \[ ... \] for formulas. Always use $$ ... $$ format."""
+IMPORTANT: For mathematical formulas, use $ ... $ for inline formulas and $$ ... $$ for display formulas. Do NOT use [ ... ] or \( ... \).
+
+Example inline: $E = mc^2$
+
+Example display:
+$$
+\mathcal L(\theta) = \frac1N \sum_{{i=1}}^N (y_i - \hat y_i)^2
+$$"""
 
         # Build messages including chat history
         messages = [{"role": "system", "content": system_prompt}]
@@ -394,7 +399,7 @@ Provide a clear, concise answer."""
         return "No document content available.", []
     
     def _convert_latex_brackets(self, answer: str) -> str:
-        """Convert [ ... ] and \[ ... \] to $$ ... $$ for KaTeX rendering."""
+        r"""Convert [ ... ] and \[ ... \] to $$ ... $$ for KaTeX rendering."""
         import re
         
         # Pattern 1: Match \[ ... \] (LaTeX display math)
