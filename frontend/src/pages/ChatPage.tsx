@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Button, Typography, message, Select, Tooltip } from 'antd'
 import { 
   SendOutlined, 
@@ -18,6 +18,7 @@ import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import ReferencePanel from '@/components/ReferencePanel'
 
 const { Text } = Typography
 
@@ -70,7 +71,12 @@ const CopyButton = ({ content }: { content: string }) => {
 }
 
 // Message bubble component - Deepseek style
-const MessageBubble = ({ msg }: { msg: Message }) => {
+interface MessageBubbleProps {
+  msg: Message
+  onCitationClick?: (citations: Array<{ page: number; text: string; node_title?: string }>, index: number) => void
+}
+
+const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick }) => {
   const isUser = msg.role === 'user'
   const [copied, setCopied] = useState(false)
 
@@ -190,7 +196,53 @@ const MessageBubble = ({ msg }: { msg: Message }) => {
                     )
                   },
                   p({ children }) {
-                    return <p style={{ margin: '8px 0' }}>{children}</p>
+                    // Process children to find citation references [1], [2], etc.
+                    const processChildren = (nodes: React.ReactNode): React.ReactNode => {
+                      return React.Children.map(nodes, (child) => {
+                        if (typeof child === 'string') {
+                          // Split string by citation patterns like [1], [2]
+                          const parts = child.split(/(\[\d+\])/g)
+                          return parts.map((part, i) => {
+                            const match = part.match(/^\[(\d+)\]$/)
+                            if (match) {
+                              const index = parseInt(match[1], 10) - 1
+                              if (index >= 0 && msg.citations && index < msg.citations.length) {
+                                return (
+                                  <sup key={i}>
+                                    <button
+                                      onClick={() => onCitationClick?.(msg.citations || [], index)}
+                                      style={{
+                                        background: '#fef3c7',
+                                        border: 'none',
+                                        borderRadius: 3,
+                                        padding: '0 4px',
+                                        marginLeft: 2,
+                                        color: '#d97706',
+                                        fontWeight: 500,
+                                        cursor: 'pointer',
+                                        fontSize: 'inherit',
+                                        transition: 'all 0.2s',
+                                      }}
+                                      title="查看引用原文"
+                                    >
+                                      {part}
+                                    </button>
+                                  </sup>
+                                )
+                              }
+                            }
+                            return part
+                          })
+                        }
+                        if (React.isValidElement(child)) {
+                          // Recursively process nested elements
+                          const processed = processChildren((child.props as any).children)
+                          return React.cloneElement(child, { ...child.props, children: processed })
+                        }
+                        return child
+                      })
+                    }
+                    return <p style={{ margin: '8px 0' }}>{processChildren(children)}</p>
                   },
                   h1({ children }) {
                     return <h1 style={{ margin: '16px 0 8px', fontSize: 20, fontWeight: 600 }}>{children}</h1>
@@ -313,21 +365,7 @@ const MessageBubble = ({ msg }: { msg: Message }) => {
             </button>
           </Tooltip>
 
-          {/* Citations */}
-          {!isUser && msg.citations && msg.citations.length > 0 && (
-            <div
-              style={{
-                marginLeft: 'auto',
-                padding: '2px 8px',
-                background: '#f0fdf4',
-                borderRadius: 4,
-                fontSize: 12,
-                color: '#065f46',
-              }}
-            >
-              References: {msg.citations.map(c => `Page ${c.page}`).join(', ')}
-            </div>
-          )}
+          {/* Citations - Hidden, only accessible via clicking in message content */}
         </div>
       </div>
     </div>
@@ -345,6 +383,10 @@ const ChatPage = () => {
   const [sending, setSending] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  // Reference panel state
+  const [showReferencePanel, setShowReferencePanel] = useState(false)
+  const [activeCitations, setActiveCitations] = useState<Array<{ page: number; text: string; node_title?: string }>>([])
+  const [selectedCitationIndex, setSelectedCitationIndex] = useState<number | null>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   // Auto scroll to bottom
@@ -458,6 +500,21 @@ const ChatPage = () => {
     fetchSessions(docId)
   }
 
+  const handleCitationClick = (citations: Array<{ page: number; text: string; node_title?: string }>, index: number) => {
+    setActiveCitations(citations)
+    setSelectedCitationIndex(index)
+    setShowReferencePanel(true)
+  }
+
+  const handleCloseReferencePanel = () => {
+    setShowReferencePanel(false)
+    setSelectedCitationIndex(null)
+  }
+
+  const handleSelectCitation = (index: number) => {
+    setSelectedCitationIndex(index)
+  }
+
   const selectedDocInfo = documents.find(d => d.id === selectedDoc)
 
   return (
@@ -489,7 +546,7 @@ const ChatPage = () => {
             style={{ width: '100%' }}
             value={selectedDoc}
             onChange={handleSelectDoc}
-            bordered={false}
+            variant="borderless"
             options={documents.map(doc => ({
               value: doc.id,
               label: (
@@ -501,7 +558,7 @@ const ChatPage = () => {
                 </div>
               ),
             }))}
-            dropdownStyle={{ borderRadius: 8 }}
+            styles={{ popup: { root: { borderRadius: 8 } } }}
           />
         </div>
 
@@ -680,7 +737,7 @@ const ChatPage = () => {
                     marginRight: msg.role === 'user' ? 0 : 'auto',
                   }}
                 >
-                  <MessageBubble msg={msg} />
+                  <MessageBubble msg={msg} onCitationClick={handleCitationClick} />
                 </div>
               ))}
               {sending && (
@@ -831,6 +888,17 @@ const ChatPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Reference Panel */}
+      {showReferencePanel && (
+        <ReferencePanel
+          citations={activeCitations}
+          selectedIndex={selectedCitationIndex}
+          onClose={handleCloseReferencePanel}
+          onSelectCitation={handleSelectCitation}
+          documentId={selectedDoc || undefined}
+        />
+      )}
 
       {/* Animations */}
       <style>{`

@@ -59,6 +59,15 @@ export const documentApi = {
     return response.data
   },
   
+  // Get original page content
+  getPageContent: async (id: string, pageNum: number): Promise<{ page: number; content: string; doc_type?: string }> => {
+    const response = await api.get(`/documents/${id}/page/${pageNum}`)
+    return response.data
+  },
+  
+  // Get document file URL for preview
+  getFileUrl: (id: string) => `/api/documents/${id}/file`,
+  
   // Reprocess a document
   reprocess: async (id: string): Promise<{ message: string; doc_id: string; status: string }> => {
     const response = await api.post(`/documents/${id}/reindex`)

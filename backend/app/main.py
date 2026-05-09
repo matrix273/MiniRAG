@@ -224,6 +224,63 @@ async def get_document_content(
     return {"content": content}
 
 
+@app.get("/api/documents/{doc_id}/page/{page_num}")
+async def get_document_page_content(
+    doc_id: str,
+    page_num: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get original content for a specific page."""
+    from sqlalchemy import select
+    result = await db.execute(select(Document).where(Document.id == doc_id))
+    doc = result.scalar_one_or_none()
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Get content from structure
+    content = doc_service.get_content_from_structure(doc.structure, page_num, page_num)
+    
+    return {"page": page_num, "content": content, "doc_type": doc.doc_type}
+
+
+@app.get("/api/documents/{doc_id}/file")
+async def get_document_file(
+    doc_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Stream the original document file for PDF preview."""
+    from sqlalchemy import select
+    from fastapi.responses import StreamingResponse
+    import io
+    
+    result = await db.execute(select(Document).where(Document.id == doc_id))
+    doc = result.scalar_one_or_none()
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # File is stored in UPLOAD_DIR with original filename
+    file_path = os.path.join(settings.UPLOAD_DIR, doc.filename)
+    
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Determine content type
+    content_type = "application/pdf" if doc.doc_type == "pdf" else "text/markdown"
+    
+    # Stream the file
+    def iter_file():
+        with open(file_path, "rb") as f:
+            yield from f
+    
+    return StreamingResponse(
+        iter_file(),
+        media_type=content_type,
+        headers={"Content-Disposition": f"inline; filename={doc.filename}"}
+    )
+
+
 @app.delete("/api/documents/{doc_id}")
 async def delete_document(doc_id: str, db: AsyncSession = Depends(get_db)):
     """Delete a document and its associated data."""

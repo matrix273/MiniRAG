@@ -211,7 +211,9 @@ Additional Content from Document:
 Question: {query}
 
 Answer the question based on the document structure and content above. 
-If citing specific information, mention the page or section.
+CRITICAL REQUIREMENT: You MUST cite sources using the format [1], [2], etc. at the end of each sentence that contains information from the document.
+For example: "The document states that... [1]" or "According to the analysis... [2]"
+You must only cite pages that you actually used to answer the question. Do NOT cite pages that are not relevant.
 Provide a clear, concise answer."""
 
         # Call LLM using LiteLLM-compatible interface
@@ -237,8 +239,11 @@ Provide a clear, concise answer."""
             
             answer = response.choices[0].message.content
             
+            # Post-process: Add [1], [2] citation markers if not present
+            answer = self._add_citation_markers(answer, relevant_content)
+            
             # Extract citations from the content we used
-            citations = self._extract_citations(relevant_content)
+            citations = self._extract_citations(relevant_content, answer)
             
             return answer, citations
             
@@ -381,19 +386,122 @@ Provide a clear, concise answer."""
         
         return "No document content available.", []
     
-    def _extract_citations(self, content: str) -> List[Dict]:
-        """Extract citation information from content."""
-        citations = []
-        # Simple citation extraction - look for page references
+    def _add_citation_markers(self, answer: str, content: str) -> str:
+        """Add [1], [2] citation markers to answer if not present."""
         import re
-        page_matches = re.findall(r'[Pp]age[s]?\s+(\d+)(?:-(\d+))?', content)
-        for match in page_matches:
-            start_page = int(match[0])
-            end_page = int(match[1]) if match[1] else start_page
-            citations.append({
-                "page": start_page,
-                "text": f"Page {start_page}" + (f"-{end_page}" if end_page != start_page else "")
-            })
+        
+        # Check if answer already has citation markers
+        if re.search(r'\[\d+\]', answer):
+            return answer
+        
+        # Extract page numbers from content (in order)
+        page_sections = re.split(r'## Page (\d+)', content)
+        page_numbers = []
+        i = 1
+        while i < len(page_sections) - 1:
+            page_numbers.append(int(page_sections[i]))
+            i += 2
+        
+        if not page_numbers:
+            return answer
+        
+        # Find mentions of pages in answer (e.g., "第2页", "Page 2", "page 2")
+        page_mentions = re.findall(r'(第(\d+)页|Page\s+(\d+)|page\s+(\d+))', answer, re.IGNORECASE)
+        
+        # Track which pages have been cited
+        cited_pages = []
+        for match in page_mentions:
+            page_num = match[1] or match[2] or match[3]
+            if page_num in [str(p) for p in page_numbers]:
+                cited_pages.append(match[0])
+        
+        # Replace page mentions with citation markers in order of appearance
+        # Only cite each page once
+        cited_set = set()
+        citation_idx = 1
+        for match in page_mentions:
+            page_num = match[1] or match[2] or match[3]
+            if page_num in [str(p) for p in page_numbers] and page_num not in cited_set:
+                cited_set.add(page_num)
+                # Replace first occurrence only
+                answer = answer.replace(match[0], f"{match[0]} [{citation_idx}]", 1)
+                citation_idx += 1
+        
+        return answer
+    
+    def _extract_citations(self, content: str, answer: str = "") -> List[Dict]:
+        """Extract citation information from content, including actual page text.
+        
+        If answer contains [1], [2] etc. or "第X页", only extract those pages.
+        Otherwise, extract all pages from content.
+        """
+        citations = []
+        import re
+        
+        # Extract page numbers from answer - map [1], [2] to actual page numbers
+        # The citation [1] in answer refers to the first cited page, not page number 1
+        answer_page_numbers = set()
+        
+        if answer:
+            # Find all [X] citations in answer
+            bracket_citations = re.findall(r'\[(\d+)\]', answer)
+            
+            # Find all page mentions in answer (e.g., "第2页", "Page 2")
+            page_mentions = re.findall(r'(第(\d+)页|Page\s+(\d+)|page\s+(\d+))', answer, re.IGNORECASE)
+            
+            # Build mapping: citation index -> actual page number
+            cited_pages = []
+            for match in page_mentions:
+                page_num = match[1] or match[2] or match[3]
+                if page_num not in cited_pages:
+                    cited_pages.append(page_num)
+            
+            # Map [1] -> first cited page, [2] -> second cited page, etc.
+            for cite_idx in bracket_citations:
+                idx = int(cite_idx) - 1
+                if idx < len(cited_pages):
+                    answer_page_numbers.add(cited_pages[idx])
+        
+        # Parse "## Page X" sections from content
+        page_sections = re.split(r'## Page (\d+)', content)
+        i = 1
+        while i < len(page_sections) - 1:
+            page_num = int(page_sections[i])
+            page_text = page_sections[i + 1].strip()
+            page_text = re.sub(r'^---\s*', '', page_text).strip()
+            display_text = page_text[:2000] + ('...' if len(page_text) > 2000 else '')
+            
+            # Only include pages that are cited in the answer (if we have any citations)
+            if answer_page_numbers:
+                if str(page_num) in answer_page_numbers:
+                    citations.append({
+                        "page": page_num,
+                        "text": display_text,
+                        "node_title": f"Page {page_num}"
+                    })
+            else:
+                # No citations in answer, include all pages
+                citations.append({
+                    "page": page_num,
+                    "text": display_text,
+                    "node_title": f"Page {page_num}"
+                })
+            i += 2
+        
+        # Only parse "## {title}" sections if no Page sections were found (Markdown/structure case)
+        if not citations:
+            section_matches = re.findall(r'^## ([^\n]+)\n(.*?)(?=^## |\Z)', content, re.MULTILINE | re.DOTALL)
+            for title, section_text in section_matches:
+                title = title.strip()
+                section_text = section_text.strip()
+                section_text = re.sub(r'^---\s*', '', section_text).strip()
+                display_text = section_text[:2000] + ('...' if len(section_text) > 2000 else '')
+                citations.append({
+                    "page": len(citations) + 1,
+                    "text": display_text,
+                    "node_title": title
+                })
+        
         return citations
 
 
