@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
-import { CloseOutlined, SearchOutlined, LoadingOutlined } from '@ant-design/icons'
+import { useState, useEffect, useCallback } from 'react'
+import { CloseOutlined, SearchOutlined, LoadingOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons'
 import type { Citation } from '@/types'
 import { documentApi } from '@/services/api'
+import PDFViewer from './PDFViewer'
 
 interface ReferencePanelProps {
   citations: Citation[]
@@ -23,6 +24,8 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
   const [loading, setLoading] = useState(false)
   const [pdfUrl, setPdfUrl] = useState<string>('')
   const [docType, setDocType] = useState<string>('')
+  const [searchResults, setSearchResults] = useState<{ text: string; index: number }[]>([])
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(-1)
 
   const selectedCitation = selectedIndex !== null ? citations[selectedIndex] : null
 
@@ -62,7 +65,56 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
   // Reset search when selection changes
   useEffect(() => {
     setSearchText('')
+    setSearchResults([])
+    setCurrentMatchIndex(-1)
   }, [selectedIndex])
+
+  // Search in page content
+  const searchInContent = useCallback((query: string) => {
+    if (!query.trim() || !pageContent) {
+      setSearchResults([])
+      setCurrentMatchIndex(-1)
+      return
+    }
+
+    const results: { text: string; index: number }[] = []
+    const lowerQuery = query.toLowerCase()
+    const lowerContent = pageContent.toLowerCase()
+    let startIndex = 0
+
+    while (startIndex < lowerContent.length) {
+      const index = lowerContent.indexOf(lowerQuery, startIndex)
+      if (index === -1) break
+      results.push({
+        text: pageContent.substring(index, index + query.length),
+        index,
+      })
+      startIndex = index + 1
+    }
+
+    setSearchResults(results)
+    setCurrentMatchIndex(results.length > 0 ? 0 : -1)
+  }, [pageContent])
+
+  // Handle search input change
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setSearchText(value)
+    searchInContent(value)
+  }
+
+  // Navigate search results
+  const goToNextMatch = () => {
+    if (searchResults.length === 0) return
+    const nextIndex = (currentMatchIndex + 1) % searchResults.length
+    setCurrentMatchIndex(nextIndex)
+  }
+
+  const goToPrevMatch = () => {
+    if (searchResults.length === 0) return
+    const prevIndex = (currentMatchIndex - 1 + searchResults.length) % searchResults.length
+    setCurrentMatchIndex(prevIndex)
+  }
 
   // Highlight search text in content
   const highlightText = (text: string, query: string) => {
@@ -91,7 +143,8 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
   return (
     <div
       style={{
-        width: 400,
+        width: '100%',
+        minWidth: 300,
         borderLeft: '1px solid #e5e7eb',
         background: '#fff',
         display: 'flex',
@@ -180,8 +233,8 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
             <input
               type="text"
               value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              placeholder="在引用中搜索..."
+              onChange={handleSearchChange}
+              placeholder="在当前页面中搜索..."
               style={{
                 border: 'none',
                 background: 'transparent',
@@ -190,6 +243,41 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
                 fontSize: 13,
               }}
             />
+            {searchText.trim() && searchResults.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 12, color: '#6b7280' }}>
+                  {currentMatchIndex + 1}/{searchResults.length}
+                </span>
+                <button
+                  onClick={goToPrevMatch}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    padding: '2px 4px',
+                    color: '#6b7280',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <LeftOutlined style={{ fontSize: 10 }} />
+                </button>
+                <button
+                  onClick={goToNextMatch}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    padding: '2px 4px',
+                    color: '#6b7280',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <RightOutlined style={{ fontSize: 10 }} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -213,33 +301,21 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
                 <LoadingOutlined style={{ fontSize: 20 }} />
                 <div style={{ marginTop: 8, fontSize: 13 }}>加载中...</div>
               </div>
-            ) : docType === 'pdf' && pdfUrl ? (
-              // PDF Preview
-              <div style={{ position: 'relative' }}>
-                <iframe
-                  src={`${pdfUrl}#page=${selectedCitation.page}`}
-                  style={{
-                    width: '100%',
-                    height: 500,
-                    border: '1px solid #e5e7eb',
-                    borderRadius: 8,
-                    background: 'transparent',
-                  }}
-                  title="PDF Preview"
-                />
-              </div>
             ) : (
-              // Text Content with highlighting
-              <div
-                style={{
-                  fontSize: 14,
-                  lineHeight: 1.7,
-                  color: '#374151',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                }}
-              >
-                {highlightText(pageContent || selectedCitation.text, searchText)}
+              // 显示 PDF 预览
+              <div>
+                {pdfUrl ? (
+                  <PDFViewer
+                    url={pdfUrl}
+                    page={selectedCitation.page}
+                    searchQuery={searchText}
+                    height={600}
+                  />
+                ) : (
+                  <div style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>
+                    无法加载 PDF 预览
+                  </div>
+                )}
               </div>
             )}
           </div>

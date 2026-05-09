@@ -184,7 +184,11 @@ Document Structure:
 Based on this document structure, answer the user's question.
 If the question can be answered from the structure summary, do so.
 If you need more specific content, indicate which pages might contain the answer.
-Be concise and accurate."""
+Be concise and accurate.
+
+IMPORTANT: When you need to include mathematical formulas, use the $$ ... $$ format for display formulas.
+For example: $$Attention(Q, K, V) = softmax((QK^T) / sqrt(d_k))V$$
+Do NOT use [ ... ] or \[ ... \] for formulas. Always use $$ ... $$ format."""
 
         # Build messages including chat history
         messages = [{"role": "system", "content": system_prompt}]
@@ -238,6 +242,9 @@ Provide a clear, concise answer."""
             )
             
             answer = response.choices[0].message.content
+            
+            # Convert [ ... ] to $$ ... $$ for KaTeX rendering
+            answer = self._convert_latex_brackets(answer)
             
             # Post-process: Add [1], [2] citation markers if not present
             answer = self._add_citation_markers(answer, relevant_content)
@@ -386,13 +393,43 @@ Provide a clear, concise answer."""
         
         return "No document content available.", []
     
+    def _convert_latex_brackets(self, answer: str) -> str:
+        """Convert [ ... ] and \[ ... \] to $$ ... $$ for KaTeX rendering."""
+        import re
+        
+        # Pattern 1: Match \[ ... \] (LaTeX display math)
+        pattern1 = r'\\\[(.*?)\\\]'
+        
+        # Pattern 2: Match [ ... ] that contains LaTeX content
+        # Allow whitespace after [ and before \
+        pattern2 = r'\[(\s*\\[a-zA-Z].*?)\]'
+        
+        def replace_bracket(match):
+            content = match.group(1).strip()
+            # Skip if it's just a number (citation)
+            if re.match(r'^\d+$', content):
+                return match.group(0)
+            # Skip if it starts with "第" (page reference like "第3页")
+            if content.startswith('第'):
+                return match.group(0)
+            # Check if it looks like LaTeX content
+            if any(latex_cmd in content for latex_cmd in ['\\text', '\\frac', '\\sqrt', '\\sum', '\\int', '\\prod', '\\alpha', '\\beta', '\\gamma', '\\delta', '\\epsilon', '\\theta', '\\lambda', '\\mu', '\\pi', '\\sigma', '\\omega', '\\phi', '\\psi', '\\chi', '\\rho', '\\tau', '\\nu', '\\xi', '\\zeta', '\\eta', '\\kappa', '\\iota', '\\upsilon', '\\left', '\\right', '\\top', '\\softmax']):
+                return f'$${content}$$'
+            # Also check for common math patterns
+            if re.search(r'\\[a-zA-Z]+', content) and ('=' in content or '(' in content):
+                return f'$${content}$$'
+            return match.group(0)
+        
+        # First convert \[ ... \] to $$ ... $$
+        answer = re.sub(pattern1, lambda m: f'$${m.group(1)}$$', answer)
+        # Then convert [ ... ] to $$ ... $$ if needed
+        answer = re.sub(pattern2, replace_bracket, answer)
+        
+        return answer
+    
     def _add_citation_markers(self, answer: str, content: str) -> str:
         """Add [1], [2] citation markers to answer if not present."""
         import re
-        
-        # Check if answer already has citation markers
-        if re.search(r'\[\d+\]', answer):
-            return answer
         
         # Extract page numbers from content (in order)
         page_sections = re.split(r'## Page (\d+)', content)
@@ -405,27 +442,63 @@ Provide a clear, concise answer."""
         if not page_numbers:
             return answer
         
-        # Find mentions of pages in answer (e.g., "第2页", "Page 2", "page 2")
-        page_mentions = re.findall(r'(第(\d+)页|Page\s+(\d+)|page\s+(\d+))', answer, re.IGNORECASE)
+        # Check if answer already has [X] style citation markers
+        if re.search(r'\[\d+\]', answer):
+            # Already has [1], [2] style citations, but need to ensure they map correctly
+            # Find all page mentions and add [X] after them if not already there
+            pass
+        else:
+            # No [X] style citations yet, add them
+            pass
+        
+        # Find mentions of pages in answer (e.g., "第2页", "Page 2", "page 2", "在第3页")
+        page_mentions = re.findall(r'(?:在|见|参考|来自|来源|原文|见于|出自)?\s*(?:第|page\s*)(\d+)\s*(?:页)?', answer, re.IGNORECASE)
         
         # Track which pages have been cited
         cited_pages = []
-        for match in page_mentions:
-            page_num = match[1] or match[2] or match[3]
+        for page_num in page_mentions:
             if page_num in [str(p) for p in page_numbers]:
-                cited_pages.append(match[0])
+                if page_num not in cited_pages:
+                    cited_pages.append(page_num)
+        
+        # If no page mentions found but we have page numbers from content,
+        # add [1], [2] style citation markers at the end
+        if not cited_pages and page_numbers:
+            # Add citation markers at the end of the answer
+            citation_markers = " ".join([f"[{i}]" for i in range(1, min(len(page_numbers), 3) + 1)])
+            answer = answer.rstrip() + " " + citation_markers
+            return answer
         
         # Replace page mentions with citation markers in order of appearance
         # Only cite each page once
         cited_set = set()
         citation_idx = 1
-        for match in page_mentions:
-            page_num = match[1] or match[2] or match[3]
-            if page_num in [str(p) for p in page_numbers] and page_num not in cited_set:
-                cited_set.add(page_num)
-                # Replace first occurrence only
-                answer = answer.replace(match[0], f"{match[0]} [{citation_idx}]", 1)
-                citation_idx += 1
+        
+        # More comprehensive pattern to match page mentions
+        patterns = [
+            r'(第(\d+)页)',
+            r'(Page\s+(\d+))',
+            r'(page\s+(\d+))',
+            r'(在第(\d+)页)',
+            r'(见于第(\d+)页)',
+            r'(来自第(\d+)页)',
+            r'(第(\d+)页)',
+        ]
+        
+        for pattern in patterns:
+            matches = re.finditer(pattern, answer, re.IGNORECASE)
+            for match in matches:
+                page_num = match.group(2)
+                if page_num in [str(p) for p in page_numbers] and page_num not in cited_set:
+                    cited_set.add(page_num)
+                    # Insert [X] after the match
+                    original = match.group(1)
+                    answer = answer.replace(original, f"{original} [{citation_idx}]", 1)
+                    citation_idx += 1
+                    if citation_idx > len(cited_pages):
+                        break
+            if citation_idx > len(cited_pages):
+                break
         
         return answer
     
@@ -438,31 +511,8 @@ Provide a clear, concise answer."""
         citations = []
         import re
         
-        # Extract page numbers from answer - map [1], [2] to actual page numbers
-        # The citation [1] in answer refers to the first cited page, not page number 1
-        answer_page_numbers = set()
-        
-        if answer:
-            # Find all [X] citations in answer
-            bracket_citations = re.findall(r'\[(\d+)\]', answer)
-            
-            # Find all page mentions in answer (e.g., "第2页", "Page 2")
-            page_mentions = re.findall(r'(第(\d+)页|Page\s+(\d+)|page\s+(\d+))', answer, re.IGNORECASE)
-            
-            # Build mapping: citation index -> actual page number
-            cited_pages = []
-            for match in page_mentions:
-                page_num = match[1] or match[2] or match[3]
-                if page_num not in cited_pages:
-                    cited_pages.append(page_num)
-            
-            # Map [1] -> first cited page, [2] -> second cited page, etc.
-            for cite_idx in bracket_citations:
-                idx = int(cite_idx) - 1
-                if idx < len(cited_pages):
-                    answer_page_numbers.add(cited_pages[idx])
-        
-        # Parse "## Page X" sections from content
+        # First, extract all page numbers from content
+        content_page_numbers = []
         page_sections = re.split(r'## Page (\d+)', content)
         i = 1
         while i < len(page_sections) - 1:
@@ -470,37 +520,72 @@ Provide a clear, concise answer."""
             page_text = page_sections[i + 1].strip()
             page_text = re.sub(r'^---\s*', '', page_text).strip()
             display_text = page_text[:2000] + ('...' if len(page_text) > 2000 else '')
-            
-            # Only include pages that are cited in the answer (if we have any citations)
-            if answer_page_numbers:
-                if str(page_num) in answer_page_numbers:
-                    citations.append({
-                        "page": page_num,
-                        "text": display_text,
-                        "node_title": f"Page {page_num}"
-                    })
-            else:
-                # No citations in answer, include all pages
-                citations.append({
-                    "page": page_num,
-                    "text": display_text,
-                    "node_title": f"Page {page_num}"
-                })
+            content_page_numbers.append({
+                "page": page_num,
+                "text": display_text,
+                "node_title": f"Page {page_num}"
+            })
             i += 2
         
-        # Only parse "## {title}" sections if no Page sections were found (Markdown/structure case)
-        if not citations:
+        # If no "## Page X" sections, try to parse "## {title}" sections
+        if not content_page_numbers:
             section_matches = re.findall(r'^## ([^\n]+)\n(.*?)(?=^## |\Z)', content, re.MULTILINE | re.DOTALL)
-            for title, section_text in section_matches:
+            for idx, (title, section_text) in enumerate(section_matches):
                 title = title.strip()
                 section_text = section_text.strip()
                 section_text = re.sub(r'^---\s*', '', section_text).strip()
                 display_text = section_text[:2000] + ('...' if len(section_text) > 2000 else '')
-                citations.append({
-                    "page": len(citations) + 1,
+                content_page_numbers.append({
+                    "page": idx + 1,
                     "text": display_text,
                     "node_title": title
                 })
+        
+        # If still no content pages, return empty
+        if not content_page_numbers:
+            return []
+        
+        # Now extract citation info from answer
+        answer_citation_indices = set()  # [1], [2] style citations
+        answer_page_numbers = set()  # "第2页" style page mentions
+        
+        if answer:
+            # Find all [X] citations in answer
+            bracket_citations = re.findall(r'\[(\d+)\]', answer)
+            for cite_idx in bracket_citations:
+                answer_citation_indices.add(int(cite_idx))
+            
+            # Find all page mentions in answer (e.g., "第2页", "Page 2", "在第3页", "第3页")
+            page_mentions = re.findall(r'(?:第|page\s+)(\d+)(?:\s*页)?', answer, re.IGNORECASE)
+            for page_num in page_mentions:
+                answer_page_numbers.add(page_num)
+        
+        # If answer has explicit page mentions (like "第2页"), use those
+        if answer_page_numbers:
+            for page_num in answer_page_numbers:
+                # Find this page in content_page_numbers
+                for cp in content_page_numbers:
+                    if str(cp["page"]) == str(page_num):
+                        if cp not in citations:
+                            citations.append(cp)
+                        break
+            # If we have page mentions but didn't find them in content, add them anyway
+            if not citations:
+                for page_num in answer_page_numbers:
+                    citations.append({
+                        "page": int(page_num),
+                        "text": f"第 {page_num} 页的内容",
+                        "node_title": f"Page {page_num}"
+                    })
+        # Otherwise, use [1], [2] style citations
+        elif answer_citation_indices:
+            for cite_idx in answer_citation_indices:
+                idx = cite_idx - 1  # [1] maps to index 0
+                if 0 <= idx < len(content_page_numbers):
+                    citations.append(content_page_numbers[idx])
+        else:
+            # No citations in answer, include all pages (up to 3)
+            citations = content_page_numbers[:3]
         
         return citations
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Button, Typography, message, Select, Tooltip } from 'antd'
+import { Button, Typography, Select, Tooltip, App } from 'antd'
 import { 
   SendOutlined, 
   PlusOutlined, 
@@ -9,6 +9,10 @@ import {
   MessageOutlined,
   MoreOutlined,
   DownOutlined,
+  LeftOutlined,
+  RightOutlined,
+  MenuOutlined,
+  CloseOutlined,
 } from '@ant-design/icons'
 import { chatApi, documentApi } from '@/services/api'
 import type { ChatSession, ChatMessage, Document } from '@/types'
@@ -16,9 +20,11 @@ import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
+import * as katex from 'katex'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import ReferencePanel from '@/components/ReferencePanel'
+import PDFViewer from '@/components/PDFViewer'
 
 const { Text } = Typography
 
@@ -37,11 +43,13 @@ interface Message {
 
 // Copy button for code blocks
 const CopyButton = ({ content }: { content: string }) => {
+  const { message } = App.useApp()
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(content)
     setCopied(true)
+    message.success('Copied to clipboard')
     setTimeout(() => setCopied(false), 2000)
   }
 
@@ -70,6 +78,41 @@ const CopyButton = ({ content }: { content: string }) => {
   )
 }
 
+// Formula copy button for KaTeX display blocks
+const FormulaCopyButton = ({ formulaText }: { formulaText: string }) => {
+  const { message } = App.useApp()
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(formulaText)
+    setCopied(true)
+    message.success('Formula copied!')
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      style={{
+        background: copied ? '#10b981' : '#f3f4f6',
+        border: 'none',
+        borderRadius: 4,
+        padding: '4px 8px',
+        cursor: 'pointer',
+        fontSize: 12,
+        color: copied ? '#fff' : '#6b7280',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 4,
+        transition: 'all 0.2s',
+      }}
+    >
+      {copied ? <CheckOutlined /> : <CopyOutlined />}
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  )
+}
+
 // Message bubble component - Deepseek style
 interface MessageBubbleProps {
   msg: Message
@@ -77,6 +120,7 @@ interface MessageBubbleProps {
 }
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick }) => {
+  const { message } = App.useApp()
   const isUser = msg.role === 'user'
   const [copied, setCopied] = useState(false)
 
@@ -196,6 +240,33 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick }) =
                     )
                   },
                   p({ children }) {
+                    // 检查是否包含 KaTeX 公式（块级公式应该独立成段）
+                    const childArray = React.Children.toArray(children)
+                    const hasKatexDisplay = childArray.some((child: any) => {
+                      if (React.isValidElement(child)) {
+                        const className = (child.props as any)?.className || ''
+                        // 检查是否包含 katex-display 类（块级公式）
+                        if (className.includes('katex-display')) {
+                          return true
+                        }
+                        // 递归检查子元素
+                        const innerChildren = React.Children.toArray((child.props as any)?.children || [])
+                        return innerChildren.some((innerChild: any) => {
+                          if (React.isValidElement(innerChild)) {
+                            const innerClassName = (innerChild.props as any)?.className || ''
+                            return innerClassName.includes('katex-display')
+                          }
+                          return false
+                        })
+                      }
+                      return false
+                    })
+                    
+                    if (hasKatexDisplay) {
+                      // 包含块级公式，不包裹在 p 标签中
+                      return <>{children}</>
+                    }
+                    
                     // Process children to find citation references [1], [2], etc.
                     const processChildren = (nodes: React.ReactNode): React.ReactNode => {
                       return React.Children.map(nodes, (child) => {
@@ -262,6 +333,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick }) =
                   li({ children }) {
                     return <li style={{ margin: '4px 0' }}>{children}</li>
                   },
+                  strong({ children }) {
+                    return <strong style={{ fontWeight: 600 }}>{children}</strong>
+                  },
+                  em({ children }) {
+                    return <em style={{ fontStyle: 'italic' }}>{children}</em>
+                  },
                   blockquote({ children }) {
                     return (
                       <blockquote
@@ -316,6 +393,96 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick }) =
                         {children}
                       </td>
                     )
+                  },
+                  html({ children }: any) {
+                    // 普通 HTML，直接渲染
+                    const htmlContent = String(children)
+                    return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />
+                  },
+                  span({ children, ...props }: any) {
+                    // 检查是否是块级公式（精确匹配 katex-display 类）
+                    const className = props.className || ''
+                    if (className === 'katex-display') {
+                      // 块级公式，只显示 Copy 按钮，不带边框
+                      
+                      // 递归函数：只从 annotation 标签中提取原始公式文本
+                      const extractAnnotationText = (node: any): string => {
+                        if (!node) return ''
+                        
+                        if (Array.isArray(node)) {
+                          for (const item of node) {
+                            const result = extractAnnotationText(item)
+                            if (result) return result
+                          }
+                          return ''
+                        }
+                        
+                        if (React.isValidElement(node)) {
+                          const elementProps = node.props as any
+                          // 检查是否是 annotation 标签
+                          if (node.type === 'annotation') {
+                            // 提取 annotation 中的文本内容
+                            const getAnnotationContent = (n: any): string => {
+                              if (typeof n === 'string') return n
+                              if (Array.isArray(n)) return n.map(getAnnotationContent).join('')
+                              if (React.isValidElement(n)) {
+                                return getAnnotationContent((n.props as any).children)
+                              }
+                              return ''
+                            }
+                            return getAnnotationContent(elementProps.children).trim()
+                          }
+                          // 递归查找 annotation
+                          return extractAnnotationText(elementProps?.children)
+                        }
+                        
+                        return ''
+                      }
+                      
+                      const formulaText = extractAnnotationText(children)
+                      
+                      return (
+                        <div style={{ position: 'relative', margin: '16px 0' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'flex-end',
+                              marginBottom: 4,
+                            }}
+                          >
+                            <FormulaCopyButton formulaText={formulaText} />
+                          </div>
+                          <div style={{ textAlign: 'center' }}>
+                            <span {...props}>{children}</span>
+                          </div>
+                        </div>
+                      )
+                    }
+                    
+                    // 检查是否是行内公式（精确匹配 katex 类，排除 katex-display 和 katex-mathml）
+                    if (className === 'katex') {
+                      // 行内公式用简单边框样式，不显示 Copy 按钮
+                      return (
+                        <span 
+                          style={{
+                            display: 'inline-block',
+                            border: '1px solid #e5e7eb',
+                            borderRadius: 4,
+                            padding: '2px 6px',
+                            background: '#f9fafb',
+                            margin: '0 2px',
+                          }}
+                          {...props}
+                        >
+                          {children}
+                        </span>
+                      )
+                    }
+                    return <span {...props}>{children}</span>
+                  },
+                  div({ children, ...props }: any) {
+                    // 普通 div，直接渲染
+                    return <div {...props}>{children}</div>
                   },
                 }}
               >
@@ -373,6 +540,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick }) =
 }
 
 const ChatPage = () => {
+  const { message } = App.useApp()
   const [documents, setDocuments] = useState<Document[]>([])
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [currentSession, setCurrentSession] = useState<string | null>(null)
@@ -383,11 +551,23 @@ const ChatPage = () => {
   const [sending, setSending] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  // Reference panel state
+  // Reference panel state - 默认折叠
   const [showReferencePanel, setShowReferencePanel] = useState(false)
   const [activeCitations, setActiveCitations] = useState<Array<{ page: number; text: string; node_title?: string }>>([])
   const [selectedCitationIndex, setSelectedCitationIndex] = useState<number | null>(null)
+  // PDF 面板状态 - 用于无引用时显示 PDF
+  const [showPdfOnly, setShowPdfOnly] = useState(false)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [chatWidth, setChatWidth] = useState(50) // percentage
+  const isDragging = useRef(false)
+  const startX = useRef(0)
+  const startWidth = useRef(0)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  // PDF preview panel state
+  const [showPdfPanel, setShowPdfPanel] = useState(false)
+  const [pdfPanelWidth, setPdfPanelWidth] = useState(40)
+  const [pdfPage, setPdfPage] = useState(1)
 
   // Auto scroll to bottom
   const scrollToBottom = () => {
@@ -461,6 +641,11 @@ const ChatPage = () => {
       setSessions([session, ...sessions])
       setCurrentSession(session.id)
       setMessages([])
+      
+      // 创建新会话后聚焦到输入框
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 100)
     } catch (error) {
       message.error('Failed to create session')
     }
@@ -504,11 +689,14 @@ const ChatPage = () => {
     setActiveCitations(citations)
     setSelectedCitationIndex(index)
     setShowReferencePanel(true)
+    setShowPdfOnly(false)
   }
 
   const handleCloseReferencePanel = () => {
     setShowReferencePanel(false)
     setSelectedCitationIndex(null)
+    setShowPdfOnly(false)
+    setChatWidth(50) // 恢复聊天窗口宽度
   }
 
   const handleSelectCitation = (index: number) => {
@@ -519,24 +707,40 @@ const ChatPage = () => {
 
   return (
     <div 
+      className="chat-container"
       style={{ 
         height: 'calc(100vh - 88px)',
         display: 'flex',
         background: '#fff',
         borderRadius: 8,
         overflow: 'hidden',
+        position: 'relative',
       }}
     >
       {/* Left Sidebar - Sessions */}
       <div 
         style={{ 
-          width: 280, 
+          width: sidebarCollapsed ? 0 : 280, 
+          minWidth: sidebarCollapsed ? 0 : 280,
           background: '#f9fafb',
           borderRight: '1px solid #e5e7eb',
           display: 'flex',
           flexDirection: 'column',
+          overflow: 'hidden',
+          transition: 'width 0.2s, min-width 0.2s',
         }}
       >
+        {/* Collapse Button */}
+        <div style={{ padding: 8, borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end' }}>
+          <Button
+            type="text"
+            size="small"
+            icon={<LeftOutlined />}
+            onClick={() => setSidebarCollapsed(true)}
+            style={{ color: '#6b7280' }}
+          />
+        </div>
+
         {/* Document Selector */}
         <div style={{ padding: 16, borderBottom: '1px solid #e5e7eb' }}>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8, color: '#6b7280' }}>
@@ -628,10 +832,14 @@ const ChatPage = () => {
       {/* Main Chat Area */}
       <div 
         style={{ 
-          flex: 1,
+          flex: showReferencePanel ? 'none' : 1,
+          flexGrow: showReferencePanel ? 0 : 1,
+          flexShrink: showReferencePanel ? 0 : 1,
           display: 'flex',
           flexDirection: 'column',
           background: '#fff',
+          width: showReferencePanel ? `${chatWidth}%` : 'auto',
+          minWidth: 300,
         }}
       >
         {/* Header */}
@@ -646,6 +854,15 @@ const ChatPage = () => {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {/* Expand Sidebar Button */}
+              {sidebarCollapsed && (
+                <Button
+                  type="text"
+                  icon={<MenuOutlined />}
+                  onClick={() => setSidebarCollapsed(false)}
+                  style={{ marginRight: 4 }}
+                />
+              )}
               <div
                 style={{
                   width: 36,
@@ -667,9 +884,26 @@ const ChatPage = () => {
               </div>
             </div>
             
-            <Tooltip title="More options">
-              <Button type="text" icon={<MoreOutlined />} />
-            </Tooltip>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Tooltip title={showPdfOnly || showReferencePanel ? "关闭" : "显示 PDF 预览"}>
+                <Button
+                  type="text"
+                  icon={(showPdfOnly || showReferencePanel) ? <CloseOutlined /> : <FileTextOutlined />}
+                  onClick={() => {
+                    if (showPdfOnly || showReferencePanel) {
+                      setShowPdfOnly(false)
+                      setShowReferencePanel(false)
+                    } else {
+                      setShowPdfOnly(true)
+                    }
+                  }}
+                  style={{ color: (showPdfOnly || showReferencePanel) ? '#6366f1' : '#6b7280' }}
+                />
+              </Tooltip>
+              <Tooltip title="More options">
+                <Button type="text" icon={<MoreOutlined />} />
+              </Tooltip>
+            </div>
           </div>
         )}
 
@@ -843,6 +1077,7 @@ const ChatPage = () => {
               }}
             >
               <textarea
+                ref={inputRef}
                 value={inputMessage}
                 onChange={e => setInputMessage(e.target.value)}
                 placeholder={currentSession ? "Message AI..." : "Select a chat to start"}
@@ -889,15 +1124,154 @@ const ChatPage = () => {
         </div>
       </div>
 
-      {/* Reference Panel */}
-      {showReferencePanel && (
-        <ReferencePanel
-          citations={activeCitations}
-          selectedIndex={selectedCitationIndex}
-          onClose={handleCloseReferencePanel}
-          onSelectCitation={handleSelectCitation}
-          documentId={selectedDoc || undefined}
-        />
+      {/* Reference Panel - 默认折叠，有引用时显示引用，无引用时显示 PDF */}
+      {(showReferencePanel || showPdfOnly) && selectedDoc && (
+        <>
+          {/* Resize Handle */}
+          <div
+            onMouseDown={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              
+              const startX = e.clientX
+              const startWidth = chatWidth
+              const container = document.querySelector('.chat-container')
+              if (!container) return
+              const containerWidth = container.offsetWidth
+              
+              const handleMouseMove = (moveEvent: MouseEvent) => {
+                const delta = moveEvent.clientX - startX
+                const newWidth = startWidth + (delta / containerWidth) * 100
+                setChatWidth(Math.max(30, Math.min(80, newWidth)))
+              }
+              
+              const handleMouseUp = () => {
+                document.removeEventListener('mousemove', handleMouseMove)
+                document.removeEventListener('mouseup', handleMouseUp)
+                
+                // 拖动结束后刷新 PDF 预览
+                setTimeout(() => {
+                  const refreshFn = (window as any).__pdfViewerRefresh
+                  if (refreshFn) {
+                    refreshFn()
+                  }
+                }, 100)
+              }
+              
+              document.addEventListener('mousemove', handleMouseMove)
+              document.addEventListener('mouseup', handleMouseUp)
+            }}
+            style={{
+              width: 8,
+              cursor: 'col-resize',
+              background: '#e5e7eb',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              position: 'relative',
+              zIndex: 10,
+            }}
+          >
+            <div style={{ width: 2, height: 40, background: '#9ca3af', borderRadius: 1 }} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+            {showReferencePanel && activeCitations.length > 0 ? (
+              <ReferencePanel
+                citations={activeCitations}
+                selectedIndex={selectedCitationIndex}
+                onClose={handleCloseReferencePanel}
+                onSelectCitation={handleSelectCitation}
+                documentId={selectedDoc || undefined}
+              />
+            ) : (
+              /* 无引用时显示 PDF */
+              <div
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  borderLeft: '1px solid #e5e7eb',
+                  background: '#fff',
+                }}
+              >
+                {/* PDF Panel Header */}
+                <div
+                  style={{
+                    padding: '12px 16px',
+                    borderBottom: '1px solid #e5e7eb',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>
+                    PDF 预览
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button
+                      onClick={() => setPdfPage(Math.max(1, pdfPage - 1))}
+                      disabled={pdfPage <= 1}
+                      style={{
+                        border: 'none',
+                        background: pdfPage <= 1 ? '#f3f4f6' : '#fff',
+                        cursor: pdfPage <= 1 ? 'not-allowed' : 'pointer',
+                        padding: '4px 8px',
+                        borderRadius: 4,
+                        color: pdfPage <= 1 ? '#d1d5db' : '#374151',
+                        fontSize: 12,
+                      }}
+                    >
+                      <LeftOutlined />
+                    </button>
+                    <span style={{ fontSize: 12, color: '#6b7280' }}>第 {pdfPage} 页</span>
+                    <button
+                      onClick={() => setPdfPage(pdfPage + 1)}
+                      style={{
+                        border: 'none',
+                        background: '#fff',
+                        cursor: 'pointer',
+                        padding: '4px 8px',
+                        borderRadius: 4,
+                        color: '#374151',
+                        fontSize: 12,
+                      }}
+                    >
+                      <RightOutlined />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowPdfOnly(false)
+                        setShowReferencePanel(false)
+                      }}
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        cursor: 'pointer',
+                        padding: 4,
+                        color: '#6b7280',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <CloseOutlined />
+                    </button>
+                  </div>
+                </div>
+                {/* PDF Viewer */}
+                <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+                  <PDFViewer
+                    url={documentApi.getFileUrl(selectedDoc)}
+                    page={pdfPage}
+                    height={600}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/* Animations */}
