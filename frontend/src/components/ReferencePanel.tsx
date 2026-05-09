@@ -23,7 +23,6 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
   const [pageContent, setPageContent] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [pdfUrl, setPdfUrl] = useState<string>('')
-  const [docType, setDocType] = useState<string>('')
   const [searchResults, setSearchResults] = useState<{ text: string; index: number }[]>([])
   const [currentMatchIndex, setCurrentMatchIndex] = useState(-1)
 
@@ -42,7 +41,6 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
       try {
         const response = await documentApi.getPageContent(documentId, selectedCitation.page)
         setPageContent(response.content)
-        setDocType(response.doc_type || '')
         
         // If it's a PDF, get the file URL for preview
         if (response.doc_type === 'pdf') {
@@ -114,28 +112,6 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
     if (searchResults.length === 0) return
     const prevIndex = (currentMatchIndex - 1 + searchResults.length) % searchResults.length
     setCurrentMatchIndex(prevIndex)
-  }
-
-  // Highlight search text in content
-  const highlightText = (text: string, query: string) => {
-    if (!query.trim()) return text
-    const parts = text.split(new RegExp(`(${query})`, 'gi'))
-    return parts.map((part, i) =>
-      part.toLowerCase() === query.toLowerCase() ? (
-        <mark
-          key={i}
-          style={{
-            background: '#fef08a',
-            padding: '0 2px',
-            borderRadius: 2,
-          }}
-        >
-          {part}
-        </mark>
-      ) : (
-        part
-      )
-    )
   }
 
   if (!citations.length) return null

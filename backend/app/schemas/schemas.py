@@ -68,6 +68,14 @@ class ChatMessageCreate(BaseModel):
     content: str
 
 
+class ChatSessionUpdate(BaseModel):
+    title: str
+
+
+class MessageDeleteRequest(BaseModel):
+    message_ids: List[str]
+
+
 class Citation(BaseModel):
     page: int
     text: str

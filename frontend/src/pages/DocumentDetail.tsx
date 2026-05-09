@@ -70,7 +70,7 @@ const DocumentDetail = () => {
     return <Tag color={statusMap[status] || 'default'}>{status.toUpperCase()}</Tag>
   }
 
-  const buildTreeData = (nodes: TreeNode[]) => {
+  const buildTreeData = (nodes: TreeNode[]): any[] => {
     return nodes.map((node, index) => ({
       title: (
         <div>

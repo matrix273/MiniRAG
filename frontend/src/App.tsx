@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Layout, Menu, Typography, App as AntApp, message } from 'antd'
+import { useEffect } from 'react'
+import { Layout, Menu, Typography, App as AntApp } from 'antd'
 import { FileTextOutlined, MessageOutlined, SettingOutlined } from '@ant-design/icons'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import DocumentList from './pages/DocumentList'

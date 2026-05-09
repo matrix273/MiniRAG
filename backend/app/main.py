@@ -28,8 +28,10 @@ from app.schemas.schemas import (
     DocumentCreate,
     ChatSessionCreate,
     ChatSessionResponse,
+    ChatSessionUpdate,
     ChatMessageCreate,
     ChatMessageResponse,
+    MessageDeleteRequest,
     TreeNode,
 )
 
@@ -510,6 +512,73 @@ async def send_message(
         citations=ai_message.citations,
         created_at=ai_message.created_at,
     )
+
+
+@app.put("/api/chat/{session_id}", response_model=ChatSessionResponse)
+async def update_chat_session(
+    session_id: str,
+    update_data: ChatSessionUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update chat session title."""
+    from sqlalchemy import select
+    
+    result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
+    session = result.scalar_one_or_none()
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    
+    session.title = update_data.title
+    await db.commit()
+    
+    return ChatSessionResponse(
+        id=session.id,
+        document_id=session.document_id,
+        title=session.title,
+        created_at=session.created_at,
+    )
+
+
+@app.delete("/api/chat/{session_id}")
+async def delete_chat_session(session_id: str, db: AsyncSession = Depends(get_db)):
+    """Delete a chat session and all its messages."""
+    from sqlalchemy import select, delete
+    
+    # Delete all messages in the session
+    await db.execute(delete(ChatMessage).where(ChatMessage.session_id == session_id))
+    
+    # Delete the session
+    result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
+    session = result.scalar_one_or_none()
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    
+    await db.delete(session)
+    await db.commit()
+    
+    return {"message": "Chat session deleted"}
+
+
+@app.delete("/api/chat/{session_id}/messages")
+async def delete_messages(
+    session_id: str,
+    delete_data: MessageDeleteRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete specific messages."""
+    from sqlalchemy import delete
+    
+    await db.execute(
+        delete(ChatMessage).where(
+            ChatMessage.id.in_(delete_data.message_ids),
+            ChatMessage.session_id == session_id
+        )
+    )
+    await db.commit()
+    
+    return {"message": "Messages deleted"}
 
 
 # ========== Health Check ==========

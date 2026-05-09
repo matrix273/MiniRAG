@@ -15,12 +15,11 @@ import {
   CloseOutlined,
 } from '@ant-design/icons'
 import { chatApi, documentApi } from '@/services/api'
-import type { ChatSession, ChatMessage, Document } from '@/types'
+import type { ChatSession, Document } from '@/types'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
-import * as katex from 'katex'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import ReferencePanel from '@/components/ReferencePanel'
@@ -30,7 +29,7 @@ const { Text } = Typography
 
 interface Message {
   id: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'system'
   content: string
   citations?: Array<{
     page: number
@@ -113,13 +112,152 @@ const FormulaCopyButton = ({ formulaText }: { formulaText: string }) => {
   )
 }
 
+// Session item component with rename and delete
+const SessionItem: React.FC<{
+  session: ChatSession
+  isActive: boolean
+  onSelect: () => void
+  onDelete: () => void
+  onRename: (newTitle: string) => void
+}> = ({ session, isActive, onSelect, onDelete, onRename }) => {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState(session.title)
+  const [showActions, setShowActions] = useState(false)
+
+  const handleRename = () => {
+    if (editTitle.trim() && editTitle !== session.title) {
+      onRename(editTitle.trim())
+    }
+    setIsEditing(false)
+  }
+
+  return (
+    <div
+      onClick={onSelect}
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => setShowActions(false)}
+      style={{
+        padding: '12px 16px',
+        borderRadius: 8,
+        cursor: 'pointer',
+        marginBottom: 4,
+        background: isActive ? '#fff' : 'transparent',
+        border: isActive ? '1px solid #e5e7eb' : '1px solid transparent',
+        boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+        transition: 'all 0.2s',
+        position: 'relative',
+      }}
+    >
+      {isEditing ? (
+        <div style={{ display: 'flex', gap: 4 }}>
+          <input
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            onBlur={handleRename}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleRename()
+              if (e.key === 'Escape') setIsEditing(false)
+            }}
+            autoFocus
+            style={{
+              flex: 1,
+              border: '1px solid #e5e7eb',
+              borderRadius: 4,
+              padding: '2px 6px',
+              fontSize: 14,
+              outline: 'none',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      ) : (
+        <>
+          <div
+            style={{ 
+              fontWeight: isActive ? 500 : 400,
+              color: isActive ? '#111827' : '#374151',
+              fontSize: 14,
+              marginBottom: 4,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {session.title}
+          </div>
+          <div style={{ fontSize: 12, color: '#9ca3af' }}>
+            {new Date(session.created_at).toLocaleString('zh-CN', { 
+              year: 'numeric', 
+              month: '2-digit', 
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              hour12: false
+            })}
+          </div>
+        </>
+      )}
+      
+      {/* Action buttons */}
+      {showActions && !isEditing && (
+        <div
+          style={{
+            position: 'absolute',
+            right: 8,
+            top: 8,
+            display: 'flex',
+            gap: 4,
+          }}
+        >
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setIsEditing(true)
+              setEditTitle(session.title)
+            }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 2,
+              color: '#6b7280',
+              fontSize: 12,
+            }}
+          >
+            <MoreOutlined />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 2,
+              color: '#ef4444',
+              fontSize: 12,
+            }}
+          >
+            <CloseOutlined />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Message bubble component - Deepseek style
 interface MessageBubbleProps {
   msg: Message
   onCitationClick?: (citations: Array<{ page: number; text: string; node_title?: string }>, index: number) => void
+  isSelected?: boolean
+  onToggleSelect?: () => void
 }
 
-const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick }) => {
+const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isSelected, onToggleSelect }) => {
   const { message } = App.useApp()
   const isUser = msg.role === 'user'
   const [copied, setCopied] = useState(false)
@@ -138,6 +276,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick }) =
         flexDirection: isUser ? 'row-reverse' : 'row',
         justifyContent: isUser ? 'flex-end' : 'flex-start',
         gap: isUser ? 8 : 12,
+        position: 'relative',
       }}
     >
       {/* Avatar */}
@@ -160,6 +299,32 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick }) =
       >
         {isUser ? 'U' : 'AI'}
       </div>
+
+      {/* Selection checkbox - 放在 Avatar 和内容之间 */}
+      {onToggleSelect && (
+        <div
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleSelect()
+          }}
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: 4,
+            border: isSelected ? 'none' : '1px solid #d1d5db',
+            background: isSelected ? '#6366f1' : '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            cursor: 'pointer',
+          }}
+        >
+          {isSelected && (
+            <CheckOutlined style={{ fontSize: 12, color: '#fff' }} />
+          )}
+        </div>
+      )}
 
       {/* Content */}
       <div
@@ -546,7 +711,6 @@ const ChatPage = () => {
   const [currentSession, setCurrentSession] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState('')
-  const [loading, setLoading] = useState(false)
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -563,14 +727,11 @@ const ChatPage = () => {
     return saved ? JSON.parse(saved) : false
   })
   const [chatWidth, setChatWidth] = useState(50) // percentage
-  const isDragging = useRef(false)
-  const startX = useRef(0)
-  const startWidth = useRef(0)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   // PDF preview panel state
-  const [showPdfPanel, setShowPdfPanel] = useState(false)
-  const [pdfPanelWidth, setPdfPanelWidth] = useState(40)
   const [pdfPage, setPdfPage] = useState(1)
+  // 消息多选状态
+  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set())
 
   // Auto scroll to bottom
   const scrollToBottom = () => {
@@ -622,14 +783,11 @@ const ChatPage = () => {
   }
 
   const fetchMessages = async (sessionId: string) => {
-    setLoading(true)
     try {
       const msgs = await chatApi.getMessages(sessionId)
-      setMessages(msgs)
+      setMessages(msgs as Message[])
     } catch (error) {
       message.error('Failed to fetch messages')
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -673,9 +831,21 @@ const ChatPage = () => {
     setInputMessage('')
     setSending(true)
 
+    // 检查是否是第一条消息（用于自动重命名）
+    const isFirstMessage = messages.length === 0
+
     try {
       const response = await chatApi.sendMessage(currentSession, inputMessage)
-      setMessages(prev => [...prev, response])
+      setMessages(prev => [...prev, response as Message])
+      
+      // 自动重命名会话（类似 ChatGPT）
+      // 只在第一条消息时自动重命名
+      const session = sessions.find(s => s.id === currentSession)
+      if (session && session.title === 'New Chat' && isFirstMessage) {
+        // 使用用户消息的前 20 个字符作为标题
+        const newTitle = inputMessage.slice(0, 20) + (inputMessage.length > 20 ? '...' : '')
+        await handleRenameSession(currentSession, newTitle)
+      }
     } catch (error) {
       message.error('Failed to send message')
     } finally {
@@ -707,6 +877,59 @@ const ChatPage = () => {
   }
 
   const selectedDocInfo = documents.find(d => d.id === selectedDoc)
+
+  // 删除选中的消息
+  const handleDeleteMessages = async () => {
+    if (!currentSession || selectedMessages.size === 0) return
+    
+    try {
+      await chatApi.deleteMessages(currentSession, Array.from(selectedMessages))
+      setMessages(prev => prev.filter(msg => !selectedMessages.has(msg.id)))
+      setSelectedMessages(new Set())
+      message.success('Messages deleted')
+    } catch (error) {
+      message.error('Failed to delete messages')
+    }
+  }
+
+  // 删除会话
+  const handleDeleteSession = async (sessionId: string) => {
+    try {
+      await chatApi.deleteSession(sessionId)
+      setSessions(prev => prev.filter(s => s.id !== sessionId))
+      if (currentSession === sessionId) {
+        setCurrentSession(null)
+        setMessages([])
+      }
+      message.success('Session deleted')
+    } catch (error) {
+      message.error('Failed to delete session')
+    }
+  }
+
+  // 重命名会话
+  const handleRenameSession = async (sessionId: string, newTitle: string) => {
+    try {
+      await chatApi.updateSession(sessionId, newTitle)
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, title: newTitle } : s))
+      message.success('Session renamed')
+    } catch (error) {
+      message.error('Failed to rename session')
+    }
+  }
+
+  // 切换消息选中状态
+  const toggleMessageSelection = (msgId: string) => {
+    setSelectedMessages(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(msgId)) {
+        newSet.delete(msgId)
+      } else {
+        newSet.add(msgId)
+      }
+      return newSet
+    })
+  }
 
   return (
     <div 
@@ -799,37 +1022,14 @@ const ChatPage = () => {
             </div>
           ) : (
             sessions.map(session => (
-              <div
+              <SessionItem
                 key={session.id}
-                onClick={() => handleSelectSession(session.id)}
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  marginBottom: 4,
-                  background: currentSession === session.id ? '#fff' : 'transparent',
-                  border: currentSession === session.id ? '1px solid #e5e7eb' : '1px solid transparent',
-                  boxShadow: currentSession === session.id ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                  transition: 'all 0.2s',
-                }}
-              >
-                <div
-                  style={{ 
-                    fontWeight: currentSession === session.id ? 500 : 400,
-                    color: currentSession === session.id ? '#111827' : '#374151',
-                    fontSize: 14,
-                    marginBottom: 4,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {session.title}
-                </div>
-                <div style={{ fontSize: 12, color: '#9ca3af' }}>
-                  {new Date(session.created_at).toLocaleDateString()}
-                </div>
-              </div>
+                session={session}
+                isActive={currentSession === session.id}
+                onSelect={() => handleSelectSession(session.id)}
+                onDelete={() => handleDeleteSession(session.id)}
+                onRename={(newTitle) => handleRenameSession(session.id, newTitle)}
+              />
             ))
           )}
         </div>
@@ -954,7 +1154,7 @@ const ChatPage = () => {
                 padding: '24px 32px',
               }}
             >
-              {messages.map((msg, index) => (
+              {messages.map((msg) => (
                 <div 
                   key={msg.id} 
                   style={{ 
@@ -966,7 +1166,7 @@ const ChatPage = () => {
                     marginRight: msg.role === 'user' ? 0 : 'auto',
                   }}
                 >
-                  <MessageBubble msg={msg} onCitationClick={handleCitationClick} />
+                  <MessageBubble msg={msg} onCitationClick={handleCitationClick} isSelected={selectedMessages.has(msg.id)} onToggleSelect={() => toggleMessageSelection(msg.id)} />
                 </div>
               ))}
               {sending && (
@@ -1092,6 +1292,56 @@ const ChatPage = () => {
           </button>
         </Tooltip>
 
+        {/* Selected messages action bar */}
+        {selectedMessages.size > 0 && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 130,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: '#1f2937',
+              borderRadius: 8,
+              padding: '8px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              zIndex: 20,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            }}
+          >
+            <span style={{ color: '#fff', fontSize: 13 }}>{selectedMessages.size} selected</span>
+            <button
+              onClick={handleDeleteMessages}
+              style={{
+                background: '#ef4444',
+                border: 'none',
+                borderRadius: 4,
+                padding: '4px 12px',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: 12,
+              }}
+            >
+              Delete
+            </button>
+            <button
+              onClick={() => setSelectedMessages(new Set())}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                borderRadius: 4,
+                padding: '4px 8px',
+                color: '#9ca3af',
+                cursor: 'pointer',
+                fontSize: 12,
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
         {/* Input Area */}
         <div 
           style={{ 
@@ -1172,7 +1422,7 @@ const ChatPage = () => {
               const startWidth = chatWidth
               const container = document.querySelector('.chat-container')
               if (!container) return
-              const containerWidth = container.offsetWidth
+              const containerWidth = (container as HTMLElement).offsetWidth
               
               const handleMouseMove = (moveEvent: MouseEvent) => {
                 const delta = moveEvent.clientX - startX

@@ -105,6 +105,22 @@ export const chatApi = {
     const response = await api.post(`/chat/${sessionId}/message`, { content })
     return response.data
   },
+  
+  // Update session title
+  updateSession: async (sessionId: string, title: string): Promise<ChatSession> => {
+    const response = await api.put(`/chat/${sessionId}`, { title })
+    return response.data
+  },
+  
+  // Delete session
+  deleteSession: async (sessionId: string): Promise<void> => {
+    await api.delete(`/chat/${sessionId}`)
+  },
+  
+  // Delete messages
+  deleteMessages: async (sessionId: string, messageIds: string[]): Promise<void> => {
+    await api.delete(`/chat/${sessionId}/messages`, { data: { message_ids: messageIds } })
+  },
 }
 
 // Health check
