@@ -1034,14 +1034,15 @@ const ChatPage = () => {
 
       {/* Main Chat Area */}
       <div 
+        className="chat-main-area"
         style={{ 
-          flex: showReferencePanel ? 'none' : 1,
-          flexGrow: showReferencePanel ? 0 : 1,
-          flexShrink: showReferencePanel ? 0 : 1,
+          flex: (showReferencePanel || showPdfOnly) ? 'none' : 1,
+          flexGrow: (showReferencePanel || showPdfOnly) ? 0 : 1,
+          flexShrink: (showReferencePanel || showPdfOnly) ? 0 : 1,
           display: 'flex',
           flexDirection: 'column',
           background: '#fff',
-          width: showReferencePanel ? `${chatWidth}%` : 'auto',
+          width: (showReferencePanel || showPdfOnly) ? `${chatWidth}%` : 'auto',
           minWidth: 300,
           position: 'relative',
         }}
@@ -1413,49 +1414,46 @@ const ChatPage = () => {
           <div
             onMouseDown={(e) => {
               e.preventDefault()
-              e.stopPropagation()
               
               const startX = e.clientX
-              const startWidth = chatWidth
               const container = document.querySelector('.chat-container')
               if (!container) return
               const containerWidth = (container as HTMLElement).offsetWidth
+              const startChatWidth = (container as HTMLElement).querySelector('.chat-main-area')?.getBoundingClientRect().width || containerWidth * 0.5
               
               const handleMouseMove = (moveEvent: MouseEvent) => {
                 const delta = moveEvent.clientX - startX
-                const newWidth = startWidth + (delta / containerWidth) * 100
-                setChatWidth(Math.max(30, Math.min(80, newWidth)))
+                const newChatWidth = ((startChatWidth + delta) / containerWidth) * 100
+                setChatWidth(Math.max(30, Math.min(80, newChatWidth)))
               }
               
               const handleMouseUp = () => {
                 document.removeEventListener('mousemove', handleMouseMove)
                 document.removeEventListener('mouseup', handleMouseUp)
-                
-                // 拖动结束后刷新 PDF 预览
-                setTimeout(() => {
-                  const refreshFn = (window as any).__pdfViewerRefresh
-                  if (refreshFn) {
-                    refreshFn()
-                  }
-                }, 100)
+
+                // 拖拽结束后刷新 PDF
+                const refreshFn = (window as any).__pdfViewerRefresh
+                if (refreshFn) {
+                  refreshFn()
+                }
               }
               
               document.addEventListener('mousemove', handleMouseMove)
               document.addEventListener('mouseup', handleMouseUp)
             }}
             style={{
-              width: 8,
+              width: 16,
               cursor: 'col-resize',
-              background: '#e5e7eb',
+              background: 'transparent',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0,
               position: 'relative',
-              zIndex: 10,
+              zIndex: 100,
             }}
           >
-            <div style={{ width: 2, height: 40, background: '#9ca3af', borderRadius: 1 }} />
+            <div style={{ width: 4, height: 60, background: '#9ca3af', borderRadius: 2, opacity: 0.6 }} />
           </div>
           <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             {showReferencePanel && activeCitations.length > 0 ? (
@@ -1544,7 +1542,7 @@ const ChatPage = () => {
                   </div>
                 </div>
                 {/* PDF Viewer */}
-                <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                   <PDFViewer
                     url={documentApi.getFileUrl(selectedDoc)}
                     page={pdfPage}

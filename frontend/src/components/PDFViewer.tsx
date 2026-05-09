@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { LoadingOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import * as pdfjsLib from 'pdfjs-dist'
@@ -14,6 +14,7 @@ interface PDFViewerProps {
   page: number
   searchQuery?: string
   height?: number
+  containerWidth?: number
 }
 
 interface SearchResult {
@@ -21,7 +22,7 @@ interface SearchResult {
   index: number
 }
 
-export default function PDFViewer({ url, page, searchQuery = '', height = 500 }: PDFViewerProps) {
+export default function PDFViewer({ url, page, searchQuery = '' }: PDFViewerProps) {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [currentMatchIndex, setCurrentMatchIndex] = useState(-1)
   const [pdfTextContent, setPdfTextContent] = useState<string>('')
@@ -32,19 +33,27 @@ export default function PDFViewer({ url, page, searchQuery = '', height = 500 }:
   const containerRef = useRef<HTMLDivElement>(null)
 
   // 只在页面变化时更新 iframe URL，避免重复加载
-  const iframeUrl = `${url}#page=${page}`
+  // 使用 zoom=width 实现宽度自适应
+  const iframeUrl = `${url}#page=${page}&zoom=width`
 
-  // 暴露刷新方法给父组件（通过重新设置 src 来刷新）
-  useEffect(() => {
-    (window as any).__pdfViewerRefresh = () => {
-      if (iframeRef.current) {
-        iframeRef.current.src = iframeUrl
-      }
+  // 刷新 PDF iframe - 使用时间戳强制刷新
+  const refreshPdf = useCallback(() => {
+    if (iframeRef.current) {
+      // 构建新的 URL，使用原始 URL + 时间戳
+      const baseUrl = url
+      const hash = `#page=${page}&zoom=width`
+      const timestamp = Date.now()
+      iframeRef.current.src = `${baseUrl}?_t=${timestamp}${hash}`
     }
+  }, [url, page])
+
+  // 暴露刷新方法给父组件
+  useEffect(() => {
+    (window as any).__pdfViewerRefresh = refreshPdf
     return () => {
       delete (window as any).__pdfViewerRefresh
     }
-  }, [iframeUrl])
+  }, [refreshPdf])
 
   // 加载 PDF 并提取文本内容用于搜索
   useEffect(() => {
@@ -155,7 +164,7 @@ export default function PDFViewer({ url, page, searchQuery = '', height = 500 }:
   }
 
   return (
-    <div style={{ position: 'relative', width: '100%' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* 工具栏 - 显示搜索状态 */}
       <div
         style={{
@@ -167,6 +176,7 @@ export default function PDFViewer({ url, page, searchQuery = '', height = 500 }:
           borderBottom: '1px solid #e5e7eb',
           borderRadius: '8px 8px 0 0',
           gap: 8,
+          flexShrink: 0,
         }}
       >
         <div style={{ fontSize: 13, color: '#374151' }}>
@@ -227,9 +237,8 @@ export default function PDFViewer({ url, page, searchQuery = '', height = 500 }:
       <div
         ref={containerRef}
         style={{
-          position: 'relative',
-          width: '100%',
-          height: `${height}px`,
+          flex: 1,
+          minHeight: 0,
           overflow: 'hidden',
           border: '1px solid #e5e7eb',
           borderTop: 'none',
@@ -244,6 +253,7 @@ export default function PDFViewer({ url, page, searchQuery = '', height = 500 }:
             width: '100%',
             height: '100%',
             border: 'none',
+            display: 'block',
           }}
           title="PDF Preview"
         />

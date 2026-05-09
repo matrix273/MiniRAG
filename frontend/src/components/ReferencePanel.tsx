@@ -281,12 +281,13 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
               // 显示 PDF 预览
               <div>
                 {pdfUrl ? (
-                  <PDFViewer
-                    url={pdfUrl}
-                    page={selectedCitation.page}
-                    searchQuery={searchText}
-                    height={600}
-                  />
+                  <div style={{ height: '100%', minHeight: 500 }}>
+                    <PDFViewer
+                      url={pdfUrl}
+                      page={selectedCitation.page}
+                      searchQuery={searchText}
+                    />
+                  </div>
                 ) : (
                   <div style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>
                     无法加载 PDF 预览
