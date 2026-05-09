@@ -558,7 +558,10 @@ const ChatPage = () => {
   // PDF 面板状态 - 用于无引用时显示 PDF
   const [showPdfOnly, setShowPdfOnly] = useState(false)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem('chatSidebarCollapsed')
+    return saved ? JSON.parse(saved) : false
+  })
   const [chatWidth, setChatWidth] = useState(50) // percentage
   const isDragging = useRef(false)
   const startX = useRef(0)
@@ -736,7 +739,10 @@ const ChatPage = () => {
             type="text"
             size="small"
             icon={<LeftOutlined />}
-            onClick={() => setSidebarCollapsed(true)}
+            onClick={() => {
+              setSidebarCollapsed(true)
+              localStorage.setItem('chatSidebarCollapsed', JSON.stringify(true))
+            }}
             style={{ color: '#6b7280' }}
           />
         </div>
@@ -840,6 +846,7 @@ const ChatPage = () => {
           background: '#fff',
           width: showReferencePanel ? `${chatWidth}%` : 'auto',
           minWidth: 300,
+          position: 'relative',
         }}
       >
         {/* Header */}
@@ -859,7 +866,10 @@ const ChatPage = () => {
                 <Button
                   type="text"
                   icon={<MenuOutlined />}
-                  onClick={() => setSidebarCollapsed(false)}
+                  onClick={() => {
+                    setSidebarCollapsed(false)
+                    localStorage.setItem('chatSidebarCollapsed', JSON.stringify(false))
+                  }}
                   style={{ marginRight: 4 }}
                 />
               )}
@@ -885,21 +895,6 @@ const ChatPage = () => {
             </div>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Tooltip title={showPdfOnly || showReferencePanel ? "关闭" : "显示 PDF 预览"}>
-                <Button
-                  type="text"
-                  icon={(showPdfOnly || showReferencePanel) ? <CloseOutlined /> : <FileTextOutlined />}
-                  onClick={() => {
-                    if (showPdfOnly || showReferencePanel) {
-                      setShowPdfOnly(false)
-                      setShowReferencePanel(false)
-                    } else {
-                      setShowPdfOnly(true)
-                    }
-                  }}
-                  style={{ color: (showPdfOnly || showReferencePanel) ? '#6366f1' : '#6b7280' }}
-                />
-              </Tooltip>
               <Tooltip title="More options">
                 <Button type="text" icon={<MoreOutlined />} />
               </Tooltip>
@@ -1037,8 +1032,7 @@ const ChatPage = () => {
             onClick={scrollToBottom}
             style={{
               position: 'absolute',
-              left: 'calc(50% + 140px)',
-              transform: 'translateX(-50%)',
+              left: '50%',
               bottom: 130,
               width: 40,
               height: 40,
@@ -1051,11 +1045,52 @@ const ChatPage = () => {
               alignItems: 'center',
               justifyContent: 'center',
               zIndex: 10,
+              transform: 'translateX(-50%)',
             }}
           >
             <DownOutlined />
           </button>
         )}
+
+        {/* PDF Preview Toggle Button - 右侧中央折叠按钮 */}
+        <Tooltip title={showPdfOnly || showReferencePanel ? "关闭 PDF 预览" : "显示 PDF 预览"}>
+          <button
+            onClick={() => {
+              if (showPdfOnly || showReferencePanel) {
+                setShowPdfOnly(false)
+                setShowReferencePanel(false)
+              } else {
+                setShowPdfOnly(true)
+              }
+            }}
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: 36,
+              height: 72,
+              borderRadius: '8px 0 0 8px',
+              background: (showPdfOnly || showReferencePanel) ? '#6366f1' : '#fff',
+              border: '1px solid #e5e7eb',
+              borderRight: 'none',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              zIndex: 10,
+              transition: 'all 0.2s',
+            }}
+          >
+            <FileTextOutlined style={{ fontSize: 16, color: (showPdfOnly || showReferencePanel) ? '#fff' : '#6b7280' }} />
+            <span style={{ fontSize: 10, color: (showPdfOnly || showReferencePanel) ? '#fff' : '#6b7280', writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
+              PDF
+            </span>
+          </button>
+        </Tooltip>
 
         {/* Input Area */}
         <div 
@@ -1175,7 +1210,7 @@ const ChatPage = () => {
           >
             <div style={{ width: 2, height: 40, background: '#9ca3af', borderRadius: 1 }} />
           </div>
-          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             {showReferencePanel && activeCitations.length > 0 ? (
               <ReferencePanel
                 citations={activeCitations}
@@ -1189,11 +1224,12 @@ const ChatPage = () => {
               <div
                 style={{
                   width: '100%',
-                  height: '100%',
+                  flex: 1,
                   display: 'flex',
                   flexDirection: 'column',
                   borderLeft: '1px solid #e5e7eb',
                   background: '#fff',
+                  overflow: 'hidden',
                 }}
               >
                 {/* PDF Panel Header */}
@@ -1261,11 +1297,11 @@ const ChatPage = () => {
                   </div>
                 </div>
                 {/* PDF Viewer */}
-                <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+                <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column' }}>
                   <PDFViewer
                     url={documentApi.getFileUrl(selectedDoc)}
                     page={pdfPage}
-                    height={600}
+                    height={800}
                   />
                 </div>
               </div>

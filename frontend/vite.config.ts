@@ -16,6 +16,18 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      // 代理 PDF 文件请求，直接返回静态文件（带缓存）
+      '/files': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes) => {
+            // 移除流式传输相关的头，添加缓存
+            delete proxyRes.headers['transfer-encoding']
+            proxyRes.headers['Cache-Control'] = 'public, max-age=3600'
+          })
+        },
+      },
     },
   },
 })

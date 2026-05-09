@@ -251,8 +251,9 @@ async def get_document_file(
 ):
     """Stream the original document file for PDF preview."""
     from sqlalchemy import select
-    from fastapi.responses import StreamingResponse
-    import io
+    from fastapi.responses import FileResponse
+    import hashlib
+    import os
     
     result = await db.execute(select(Document).where(Document.id == doc_id))
     doc = result.scalar_one_or_none()
@@ -269,15 +270,21 @@ async def get_document_file(
     # Determine content type
     content_type = "application/pdf" if doc.doc_type == "pdf" else "text/markdown"
     
-    # Stream the file
-    def iter_file():
-        with open(file_path, "rb") as f:
-            yield from f
+    # Generate ETag based on file modification time
+    mtime = os.path.getmtime(file_path)
+    etag = hashlib.md5(f"{doc_id}-{mtime}".encode()).hexdigest()
     
-    return StreamingResponse(
-        iter_file(),
+    # Use FileResponse for faster delivery (with caching)
+    return FileResponse(
+        file_path,
         media_type=content_type,
-        headers={"Content-Disposition": f"inline; filename={doc.filename}"}
+        filename=doc.filename,
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Content-Disposition": f"inline; filename={doc.filename}",
+            "ETag": etag,
+            "Last-Modified": str(mtime)
+        }
     )
 
 

@@ -1,10 +1,13 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { SearchOutlined, LoadingOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons'
+import { useState, useEffect, useRef } from 'react'
+import { LoadingOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import * as pdfjsLib from 'pdfjs-dist'
 
-// 设置 pdfjs-dist worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`
+// 设置 pdfjs-dist worker - 从本地加载
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.js',
+  import.meta.url
+).href
 
 interface PDFViewerProps {
   url: string
@@ -27,17 +30,21 @@ export default function PDFViewer({ url, page, searchQuery = '', height = 500 }:
   const pdfDocRef = useRef<PDFDocumentProxy | null>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [renderCount, setRenderCount] = useState(0)
 
-  // 暴露刷新方法给父组件
+  // 只在页面变化时更新 iframe URL，避免重复加载
+  const iframeUrl = `${url}#page=${page}`
+
+  // 暴露刷新方法给父组件（通过重新设置 src 来刷新）
   useEffect(() => {
     (window as any).__pdfViewerRefresh = () => {
-      setRenderCount(prev => prev + 1)
+      if (iframeRef.current) {
+        iframeRef.current.src = iframeUrl
+      }
     }
     return () => {
       delete (window as any).__pdfViewerRefresh
     }
-  }, [])
+  }, [iframeUrl])
 
   // 加载 PDF 并提取文本内容用于搜索
   useEffect(() => {
@@ -147,9 +154,6 @@ export default function PDFViewer({ url, page, searchQuery = '', height = 500 }:
     )
   }
 
-  // 使用时间戳确保每次都是新的 URL
-  const iframeUrl = `${url}#page=${page}&t=${Date.now()}`
-
   return (
     <div style={{ position: 'relative', width: '100%' }}>
       {/* 工具栏 - 显示搜索状态 */}
@@ -234,7 +238,6 @@ export default function PDFViewer({ url, page, searchQuery = '', height = 500 }:
         }}
       >
         <iframe
-          key={renderCount}
           ref={iframeRef}
           src={iframeUrl}
           style={{
