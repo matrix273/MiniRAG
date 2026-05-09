@@ -120,12 +120,14 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
     <div
       style={{
         width: '100%',
+        height: '100%',
         minWidth: 300,
         borderLeft: '1px solid #e5e7eb',
         background: '#fff',
         display: 'flex',
         flexDirection: 'column',
         flexShrink: 0,
+        overflow: 'hidden',
       }}
     >
       {/* Header */}
@@ -259,15 +261,16 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
       )}
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: 'auto', padding: 20 }}>
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {selectedCitation ? (
-          <div>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <div
               style={{
                 fontSize: 12,
                 color: '#6b7280',
-                marginBottom: 12,
+                padding: '12px 20px 0',
                 fontWeight: 500,
+                flexShrink: 0,
               }}
             >
               {selectedCitation.node_title || `Page ${selectedCitation.page}`}
@@ -279,9 +282,9 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
               </div>
             ) : (
               // 显示 PDF 预览
-              <div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '8px 20px 20px' }}>
                 {pdfUrl ? (
-                  <div style={{ height: '100%', minHeight: 500 }}>
+                  <div style={{ flex: 1, minHeight: 0 }}>
                     <PDFViewer
                       url={pdfUrl}
                       page={selectedCitation.page}
