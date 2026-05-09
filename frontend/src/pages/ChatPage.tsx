@@ -275,6 +275,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
         display: 'flex',
         flexDirection: isUser ? 'row-reverse' : 'row',
         justifyContent: isUser ? 'flex-end' : 'flex-start',
+        alignItems: 'flex-start',
         gap: isUser ? 8 : 12,
         position: 'relative',
       }}
@@ -329,8 +330,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
       {/* Content */}
       <div
         style={{
-          width: '100%',
-          flex: isUser ? '0 0 auto' : 1,
+          flex: isUser ? '1 1 auto' : 1,
+          maxWidth: isUser ? 'calc(100% - 80px)' : '100%',
+          minWidth: 0,
           display: 'flex',
           flexDirection: 'column',
           alignItems: isUser ? 'flex-end' : 'flex-start',
@@ -344,12 +346,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
             borderRadius: 12,
             borderTopRightRadius: isUser ? 4 : 12,
             borderTopLeftRadius: isUser ? 12 : 4,
-            maxWidth: isUser ? 'fit-content' : '100%',
+            maxWidth: '100%',
           }}
         >
           {/* Render markdown for assistant, plain text for user */}
           {isUser ? (
-            <div style={{ color: '#1f2937', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxWidth: 'fit-content' }}>{msg.content}</div>
+            <div style={{ color: '#1f2937', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'keep-all' }}>{msg.content}</div>
           ) : (
             <div className="markdown-body" style={{ color: '#1f2937', lineHeight: 1.7 }}>
               <ReactMarkdown
@@ -481,7 +483,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
                         return child
                       })
                     }
-                    return <p style={{ margin: '8px 0' }}>{processChildren(children)}</p>
+                    return <p style={{ margin: 0 }}>{processChildren(children)}</p>
                   },
                   h1({ children }) {
                     return <h1 style={{ margin: '16px 0 8px', fontSize: 20, fontWeight: 600 }}>{children}</h1>
@@ -493,10 +495,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
                     return <h3 style={{ margin: '12px 0 8px', fontSize: 16, fontWeight: 600 }}>{children}</h3>
                   },
                   ul({ children }) {
-                    return <ul style={{ margin: '8px 0', paddingLeft: 20 }}>{children}</ul>
+                    return <ul style={{ margin: 0, paddingLeft: 20 }}>{children}</ul>
                   },
                   ol({ children }) {
-                    return <ol style={{ margin: '8px 0', paddingLeft: 20 }}>{children}</ol>
+                    return <ol style={{ margin: 0, paddingLeft: 20 }}>{children}</ol>
                   },
                   li({ children }) {
                     return <li style={{ margin: '4px 0' }}>{children}</li>
@@ -610,19 +612,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
                       const formulaText = extractAnnotationText(children)
                       
                       return (
-                        <div style={{ position: 'relative', margin: '16px 0' }}>
-                          <div
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'flex-end',
-                              marginBottom: 4,
-                            }}
-                          >
-                            <FormulaCopyButton formulaText={formulaText} />
-                          </div>
-                          <div style={{ textAlign: 'center' }}>
+                        <div style={{ position: 'relative', margin: '16px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div style={{ flex: 1, textAlign: 'center' }}>
                             <span {...props}>{children}</span>
                           </div>
+                          <FormulaCopyButton formulaText={formulaText} />
                         </div>
                       )
                     }
