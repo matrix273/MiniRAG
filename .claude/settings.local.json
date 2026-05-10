@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh api *)",
+      "WebFetch(domain:github.com)",
+      "Bash(ls -la ~/.claude/)",
+      "Read(//Users/neo/.claude/**)",
+      "Bash(uv run *)",
+      "Bash(npm run *)",
+      "WebSearch",
+      "WebFetch(domain:ant.design)"
+    ]
+  }
+}

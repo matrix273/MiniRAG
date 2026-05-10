@@ -20,10 +20,10 @@ elif settings.OPENAI_API_KEY:
     if settings.OPENAI_BASE_URL:
         os.environ["OPENAI_BASE_URL"] = settings.OPENAI_BASE_URL
 
-from app.models.database import get_db, Document, ChatSession, ChatMessage, init_db
+from app.models.database import get_db, Document, ChatSession, ChatMessage, Folder, init_db
 from app.services.document_service import doc_service, chat_service
 from app.schemas.schemas import (
-    DocumentResponse, 
+    DocumentResponse,
     DocumentListResponse,
     DocumentCreate,
     ChatSessionCreate,
@@ -33,6 +33,9 @@ from app.schemas.schemas import (
     ChatMessageResponse,
     MessageDeleteRequest,
     TreeNode,
+    FolderCreate,
+    FolderUpdate,
+    FolderResponse,
 )
 
 app = FastAPI(
@@ -69,24 +72,25 @@ async def startup():
 async def upload_documents(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
+    folder_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
     """Upload multiple documents (PDF or Markdown) and start indexing."""
     allowed_extensions = {'.pdf', '.md', '.markdown'}
     results = []
     errors = []
-    
+
     for file in files:
         file_ext = os.path.splitext(file.filename.lower())[1]
-        
+
         if file_ext not in allowed_extensions:
             errors.append(f"{file.filename}: Unsupported file type {file_ext}")
             continue
-        
+
         doc_id = str(uuid.uuid4())
         safe_filename = f"{doc_id}{file_ext}"
         file_path = os.path.join(settings.UPLOAD_DIR, safe_filename)
-        
+
         try:
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
@@ -95,7 +99,7 @@ async def upload_documents(
             continue
         finally:
             await file.close()
-        
+
         doc_type = "pdf" if file_ext == ".pdf" else "md"
         doc = Document(
             id=doc_id,
@@ -103,15 +107,16 @@ async def upload_documents(
             original_name=file.filename,
             doc_type=doc_type,
             status="pending",
+            folder_id=folder_id,
         )
         db.add(doc)
         results.append(doc)
-        
+
         # Start background indexing for each document
         background_tasks.add_task(doc_service.index_document, doc_id, file_path, doc_type)
-    
+
     await db.commit()
-    
+
     return {
         "uploaded": [
             {
@@ -120,6 +125,7 @@ async def upload_documents(
                 "doc_type": doc.doc_type,
                 "status": doc.status,
                 "created_at": doc.created_at,
+                "folder_id": doc.folder_id,
             }
             for doc in results
         ],
@@ -130,12 +136,15 @@ async def upload_documents(
 
 
 @app.get("/api/documents", response_model=List[DocumentListResponse])
-async def list_documents(db: AsyncSession = Depends(get_db)):
-    """List all documents."""
+async def list_documents(folder_id: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    """List all documents, optionally filtered by folder_id."""
     from sqlalchemy import select
-    result = await db.execute(select(Document).order_by(Document.created_at.desc()))
+    query = select(Document).order_by(Document.created_at.desc())
+    if folder_id is not None:
+        query = query.where(Document.folder_id == folder_id)
+    result = await db.execute(query)
     documents = result.scalars().all()
-    
+
     return [
         DocumentListResponse(
             id=doc.id,
@@ -145,6 +154,7 @@ async def list_documents(db: AsyncSession = Depends(get_db)):
             doc_description=doc.doc_description,
             page_count=doc.page_count,
             created_at=doc.created_at,
+            folder_id=doc.folder_id,
         )
         for doc in documents
     ]
@@ -172,6 +182,7 @@ async def get_document(doc_id: str, db: AsyncSession = Depends(get_db)):
         error_message=doc.error_message,
         created_at=doc.created_at,
         updated_at=doc.updated_at,
+        folder_id=doc.folder_id,
     )
 
 
@@ -577,8 +588,190 @@ async def delete_messages(
         )
     )
     await db.commit()
-    
+
     return {"message": "Messages deleted"}
+
+
+# ========== Folder Endpoints ==========
+
+def build_folder_tree(folders: List[Folder], root_docs: List[Document]) -> List[FolderResponse]:
+    """Build folder tree from flat list."""
+    folder_map = {f.id: f for f in folders}
+    doc_map = {d.id: d for d in root_docs}
+
+    def build_tree(parent_id: Optional[str]) -> List[FolderResponse]:
+        children = [folder_map[f.id] for f in folders if f.parent_id == parent_id]
+        return [
+            FolderResponse(
+                id=f.id,
+                name=f.name,
+                parent_id=f.parent_id,
+                created_at=f.created_at,
+                updated_at=f.updated_at,
+                children=build_tree(f.id),
+                documents=[
+                    DocumentListResponse(
+                        id=d.id,
+                        filename=d.original_name,
+                        doc_type=d.doc_type,
+                        status=d.status,
+                        doc_description=d.doc_description,
+                        page_count=d.page_count,
+                        created_at=d.created_at,
+                        folder_id=d.folder_id,
+                    )
+                    for d in root_docs if d.folder_id == f.id
+                ],
+            )
+            for f in children
+        ]
+
+    return build_tree(None)
+
+
+@app.get("/api/folders", response_model=List[FolderResponse])
+async def list_folders(db: AsyncSession = Depends(get_db)):
+    """Get all folders as a tree structure."""
+    from sqlalchemy import select
+    result = await db.execute(select(Folder).order_by(Folder.created_at))
+    folders = result.scalars().all()
+
+    doc_result = await db.execute(select(Document).where(Document.folder_id.isnot(None)))
+    docs = doc_result.scalars().all()
+
+    return build_folder_tree(list(folders), list(docs))
+
+
+@app.post("/api/folders", response_model=FolderResponse)
+async def create_folder(data: FolderCreate, db: AsyncSession = Depends(get_db)):
+    """Create a new folder."""
+    from sqlalchemy import select
+
+    if data.parent_id:
+        parent = await db.execute(select(Folder).where(Folder.id == data.parent_id))
+        if not parent.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail="Parent folder not found")
+
+    folder = Folder(
+        name=data.name,
+        parent_id=data.parent_id,
+    )
+    db.add(folder)
+    await db.commit()
+
+    return FolderResponse(
+        id=folder.id,
+        name=folder.name,
+        parent_id=folder.parent_id,
+        created_at=folder.created_at,
+        updated_at=folder.updated_at,
+        children=[],
+        documents=[],
+    )
+
+
+@app.put("/api/folders/{folder_id}", response_model=FolderResponse)
+async def update_folder(folder_id: str, data: FolderUpdate, db: AsyncSession = Depends(get_db)):
+    """Rename a folder."""
+    from sqlalchemy import select
+
+    result = await db.execute(select(Folder).where(Folder.id == folder_id))
+    folder = result.scalar_one_or_none()
+
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+
+    folder.name = data.name
+    await db.commit()
+
+    return FolderResponse(
+        id=folder.id,
+        name=folder.name,
+        parent_id=folder.parent_id,
+        created_at=folder.created_at,
+        updated_at=folder.updated_at,
+        children=[],
+        documents=[],
+    )
+
+
+@app.delete("/api/folders/{folder_id}")
+async def delete_folder(folder_id: str, db: AsyncSession = Depends(get_db)):
+    """Delete a folder and all its children and documents."""
+    from sqlalchemy import select, delete
+
+    # Recursively get all child folder IDs
+    async def get_all_folder_ids(parent_id: str) -> List[str]:
+        result = await db.execute(select(Folder).where(Folder.parent_id == parent_id))
+        children = result.scalars().all()
+        ids = [parent_id]
+        for child in children:
+            ids.extend(await get_all_folder_ids(child.id))
+        return ids
+
+    folder_ids = await get_all_folder_ids(folder_id)
+
+    # Move documents in these folders to root
+    await db.execute(
+        Document.__table__.update()
+        .where(Document.folder_id.in_(folder_ids))
+        .values(folder_id=None)
+    )
+
+    # Delete all folders
+    await db.execute(delete(Folder).where(Folder.id.in_(folder_ids)))
+    await db.commit()
+
+    return {"message": "Folder deleted successfully"}
+
+
+@app.put("/api/folders/{folder_id}/move")
+async def move_folder(folder_id: str, data: FolderUpdate, db: AsyncSession = Depends(get_db)):
+    """Move a folder to another parent."""
+    from sqlalchemy import select
+
+    result = await db.execute(select(Folder).where(Folder.id == folder_id))
+    folder = result.scalar_one_or_none()
+
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+
+    new_parent_id = data.name  # data.name is used as parent_id in this case
+
+    if new_parent_id == folder_id:
+        raise HTTPException(status_code=400, detail="Cannot move folder to itself")
+
+    if new_parent_id:
+        parent = await db.execute(select(Folder).where(Folder.id == new_parent_id))
+        if not parent.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail="Target folder not found")
+
+    folder.parent_id = new_parent_id
+    await db.commit()
+
+    return {"message": "Folder moved successfully"}
+
+
+@app.put("/api/documents/{doc_id}/move")
+async def move_document(doc_id: str, data: FolderCreate, db: AsyncSession = Depends(get_db)):
+    """Move a document to a folder."""
+    from sqlalchemy import select
+
+    result = await db.execute(select(Document).where(Document.id == doc_id))
+    doc = result.scalar_one_or_none()
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if data.parent_id:
+        folder = await db.execute(select(Folder).where(Folder.id == data.parent_id))
+        if not folder.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail="Folder not found")
+
+    doc.folder_id = data.parent_id
+    await db.commit()
+
+    return {"message": "Document moved successfully"}
 
 
 # ========== Health Check ==========

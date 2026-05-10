@@ -21,6 +21,7 @@ class DocumentResponse(BaseModel):
     error_message: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    folder_id: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -34,6 +35,30 @@ class DocumentListResponse(BaseModel):
     doc_description: Optional[str] = None
     page_count: Optional[int] = None
     created_at: datetime
+    folder_id: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Folder Schemas
+class FolderCreate(BaseModel):
+    name: str
+    parent_id: Optional[str] = None
+
+
+class FolderUpdate(BaseModel):
+    name: str
+
+
+class FolderResponse(BaseModel):
+    id: str
+    name: str
+    parent_id: Optional[str]
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    children: Optional[List["FolderResponse"]] = []
+    documents: Optional[List[DocumentListResponse]] = []
 
     class Config:
         from_attributes = True

@@ -8,6 +8,7 @@ export interface Document {
   line_count?: number
   created_at: string
   updated_at?: string
+  folder_id?: string | null
 }
 
 export interface DocumentUploadResponse {
@@ -16,6 +17,17 @@ export interface DocumentUploadResponse {
   doc_type: string
   status: string
   created_at: string
+  folder_id?: string | null
+}
+
+export interface Folder {
+  id: string
+  name: string
+  parent_id: string | null
+  created_at: string
+  updated_at?: string
+  children: Folder[]
+  documents: Document[]
 }
 
 export interface TreeNode {
