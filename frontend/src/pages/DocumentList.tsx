@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Card, Table, Button, Upload, message, Tag, Space, Typography, App, Tooltip, Layout, Tree, Input, Modal, Dropdown } from 'antd'
+import { Card, Table, Button, Upload, message, Tag, Space, Typography, App, Tooltip, Layout, Tree, Input, Modal, Dropdown, Select, List } from 'antd'
 import type { UploadFile } from 'antd/es/upload/interface'
 import type { DataNode } from 'antd/es/tree'
 import {
@@ -15,6 +15,7 @@ import {
   EditOutlined,
   FolderOpenOutlined,
   SwapOutlined,
+  InboxOutlined,
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { documentApi, folderApi } from '@/services/api'
@@ -59,6 +60,9 @@ const DocumentList = () => {
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
   const [dragOverKey, setDragOverKey] = useState<string | null>(null)
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
+  const [uploadModalOpen, setUploadModalOpen] = useState(false)
+  const [pendingFiles, setPendingFiles] = useState<UploadFile[]>([])
+  const [uploadFolderId, setUploadFolderId] = useState<string | null>(null)
 
   const prevStatusesRef = useRef<Record<string, string>>({})
   const uploadedFilesRef = useRef<Set<string>>(new Set())
@@ -143,7 +147,7 @@ const DocumentList = () => {
 
     setUploading(true)
     try {
-      const result = await documentApi.uploadMultiple(newFiles, selectedFolderId ?? undefined)
+      const result = await documentApi.uploadMultiple(newFiles, uploadFolderId ?? undefined)
 
       if (result.total_uploaded > 0) {
         message.success(`Uploaded ${result.total_uploaded} document(s)`)
@@ -163,6 +167,31 @@ const DocumentList = () => {
     } finally {
       setUploading(false)
     }
+  }
+
+  const showUploadModal = () => {
+    setPendingFiles([])
+    setUploadFolderId(selectedFolderId)
+    setUploadModalOpen(true)
+  }
+
+  const handleUploadModalOk = async () => {
+    if (pendingFiles.length === 0) {
+      message.info('Please select files to upload')
+      return
+    }
+    await handleUpload(pendingFiles)
+    setUploadModalOpen(false)
+    setPendingFiles([])
+  }
+
+  const handleUploadModalCancel = () => {
+    setUploadModalOpen(false)
+    setPendingFiles([])
+  }
+
+  const handleFileRemove = (file: UploadFile) => {
+    setPendingFiles(prev => prev.filter(f => f.uid !== file.uid))
   }
 
   const handleCreateFolder = (parentId?: string) => {
@@ -593,23 +622,80 @@ const DocumentList = () => {
                   </Button>
                 </>
               )}
-              <Upload
-                accept=".pdf,.md,.markdown"
-                showUploadList={false}
-                beforeUpload={() => false}
-                onChange={(info) => {
-                  if (info.fileList.length > 0) {
-                    handleUpload(info.fileList)
-                  }
-                }}
-                multiple
-              >
-                <Button type="primary" icon={<UploadOutlined />} loading={uploading}>
-                  Upload
-                </Button>
-              </Upload>
+              <Button type="primary" icon={<UploadOutlined />} loading={uploading} onClick={showUploadModal}>
+                Upload
+              </Button>
             </Space>
           </div>
+
+          <Modal
+            title="Upload Documents"
+            open={uploadModalOpen}
+            onOk={handleUploadModalOk}
+            onCancel={handleUploadModalCancel}
+            okText="Upload"
+            cancelText="Cancel"
+            width={500}
+            okButtonProps={{ loading: uploading }}
+          >
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 8 }}>Select folder:</label>
+              <Select
+                style={{ width: '100%' }}
+                value={uploadFolderId}
+                onChange={setUploadFolderId}
+                allowClear
+                placeholder="Root Directory"
+                options={[
+                  { value: null, label: 'Root Directory' },
+                  ...folderSelectItems.map(item => ({
+                    value: item.value,
+                    label: item.label,
+                  })),
+                ]}
+              />
+            </div>
+            <Upload.Dragger
+              accept=".pdf,.md,.markdown"
+              showUploadList={false}
+              beforeUpload={(file) => {
+                setPendingFiles(prev => [...prev, file as unknown as UploadFile])
+                return false
+              }}
+              multiple
+            >
+              <p className="ant-upload-drag-icon">
+                <InboxOutlined />
+              </p>
+              <p className="ant-upload-text">Click or drag files to this area</p>
+              <p className="ant-upload-hint">Support for PDF, Markdown files</p>
+            </Upload.Dragger>
+            {pendingFiles.length > 0 && (
+              <List
+                style={{ marginTop: 16 }}
+                size="small"
+                dataSource={pendingFiles}
+                renderItem={(file) => (
+                  <List.Item
+                    actions={[
+                      <Button
+                        key="remove"
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={() => handleFileRemove(file)}
+                      />,
+                    ]}
+                  >
+                    <List.Item.Meta
+                      avatar={file.type?.includes('pdf') ? <FilePdfOutlined style={{ color: '#ff4d4f' }} /> : <FileMarkdownOutlined style={{ color: '#1677ff' }} />}
+                      title={file.name}
+                    />
+                  </List.Item>
+                )}
+              />
+            )}
+          </Modal>
 
           <Table
             dataSource={documents}
