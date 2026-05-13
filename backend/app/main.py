@@ -36,6 +36,8 @@ from app.schemas.schemas import (
     FolderCreate,
     FolderUpdate,
     FolderResponse,
+    PromptConfigCreate,
+    SystemConfigUpdate,
 )
 
 app = FastAPI(
@@ -64,6 +66,8 @@ async def startup():
     await init_db()
     # Ensure upload directory exists
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    from app.services.system_config_service import init_default_configs
+    await init_default_configs()
 
 
 # ========== Document Endpoints ==========
@@ -772,6 +776,106 @@ async def move_document(doc_id: str, data: FolderCreate, db: AsyncSession = Depe
     await db.commit()
 
     return {"message": "Document moved successfully"}
+
+
+# ========== Prompt Endpoints ==========
+
+@app.get("/api/prompts")
+async def list_all_prompts():
+    from app.services.prompt_service import get_all_active_prompts
+    prompts = await get_all_active_prompts()
+    return prompts
+
+
+@app.get("/api/prompts/{category}")
+async def get_prompt(category: str):
+    from app.services.prompt_service import get_active_prompt
+    content = await get_active_prompt(category)
+    if not content:
+        raise HTTPException(status_code=404, detail=f"No active prompt for category: {category}")
+    return {"category": category, "content": content}
+
+
+@app.get("/api/prompts/{category}/versions")
+async def list_prompt_versions(category: str):
+    from app.services.prompt_service import list_versions
+    versions = await list_versions(category)
+    return [
+        {
+            "id": v.id,
+            "category": v.category,
+            "name": v.name,
+            "content": v.content,
+            "version": v.version,
+            "is_active": v.is_active,
+            "description": v.description,
+            "created_at": v.created_at,
+        }
+        for v in versions
+    ]
+
+
+@app.post("/api/prompts/{category}")
+async def create_prompt_version(category: str, data: PromptConfigCreate):
+    from app.services.prompt_service import create_prompt
+    prompt = await create_prompt(category, data.name, data.content, data.description)
+    return {
+        "id": prompt.id,
+        "category": prompt.category,
+        "name": prompt.name,
+        "content": prompt.content,
+        "version": prompt.version,
+        "is_active": prompt.is_active,
+        "description": prompt.description,
+        "created_at": prompt.created_at,
+    }
+
+
+@app.put("/api/prompts/{category}/active/{prompt_id}")
+async def activate_prompt_version(category: str, prompt_id: str):
+    from app.services.prompt_service import activate_prompt
+    prompt = await activate_prompt(category, prompt_id)
+    if not prompt:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+    return {"message": f"Activated version {prompt.version} for {category}"}
+
+
+@app.delete("/api/prompts/{category}/versions/{prompt_id}")
+async def delete_prompt_version(category: str, prompt_id: str):
+    from app.services.prompt_service import delete_prompt
+    success = await delete_prompt(prompt_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="Cannot delete active prompt or prompt not found")
+    return {"message": "Prompt version deleted"}
+
+
+# ========== SystemConfig Endpoints ==========
+
+@app.get("/api/system-configs")
+async def list_system_configs():
+    from app.services.system_config_service import list_configs
+    configs = await list_configs()
+    return [
+        {
+            "key": c.key,
+            "value": c.value,
+            "description": c.description,
+            "updated_at": c.updated_at,
+        }
+        for c in configs
+    ]
+
+
+@app.put("/api/system-configs/{key}")
+async def update_system_config(key: str, data: SystemConfigUpdate):
+    from app.services.system_config_service import update_config
+    config = await update_config(key, data.value)
+    return {
+        "key": config.key,
+        "value": config.value,
+        "description": config.description,
+        "updated_at": config.updated_at,
+    }
 
 
 # ========== Health Check ==========
