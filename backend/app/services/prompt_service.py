@@ -46,9 +46,11 @@ Answer based only on tool output. Be concise.""",
 }
 
 
+_session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
 async def _get_session() -> AsyncSession:
-    AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    return AsyncSessionLocal()
+    return _session_factory()
 
 
 def invalidate_cache(category: Optional[str] = None):
@@ -94,82 +96,98 @@ async def list_versions(category: str):
 
 async def create_prompt(category: str, name: str, content: str, description: str = None):
     async with await _get_session() as db:
-        result = await db.execute(
-            select(sql_func.coalesce(sql_func.max(PromptConfig.version), 0))
-            .where(PromptConfig.category == category)
-        )
-        max_version = result.scalar() or 0
+        try:
+            result = await db.execute(
+                select(sql_func.coalesce(sql_func.max(PromptConfig.version), 0))
+                .where(PromptConfig.category == category)
+            )
+            max_version = result.scalar() or 0
 
-        current = await db.execute(
-            select(PromptConfig)
-            .where(PromptConfig.category == category, PromptConfig.is_active == True)
-        )
-        for row in current.scalars().all():
-            row.is_active = False
+            current = await db.execute(
+                select(PromptConfig)
+                .where(PromptConfig.category == category, PromptConfig.is_active == True)
+            )
+            for row in current.scalars().all():
+                row.is_active = False
 
-        prompt = PromptConfig(
-            category=category,
-            name=name,
-            content=content,
-            version=max_version + 1,
-            is_active=True,
-            description=description,
-        )
-        db.add(prompt)
-        await db.commit()
-        invalidate_cache(category)
-        return prompt
+            prompt = PromptConfig(
+                category=category,
+                name=name,
+                content=content,
+                version=max_version + 1,
+                is_active=True,
+                description=description,
+            )
+            db.add(prompt)
+            await db.commit()
+            invalidate_cache(category)
+            return prompt
+        except Exception:
+            await db.rollback()
+            raise
 
 
 async def activate_prompt(category: str, prompt_id: str):
     async with await _get_session() as db:
-        result = await db.execute(
-            select(PromptConfig)
-            .where(PromptConfig.category == category, PromptConfig.is_active == True)
-        )
-        for row in result.scalars().all():
-            row.is_active = False
+        try:
+            result = await db.execute(
+                select(PromptConfig)
+                .where(PromptConfig.category == category, PromptConfig.is_active == True)
+            )
+            for row in result.scalars().all():
+                row.is_active = False
 
-        target = await db.execute(
-            select(PromptConfig).where(PromptConfig.id == prompt_id)
-        )
-        prompt = target.scalar_one_or_none()
-        if prompt:
-            prompt.is_active = True
-            await db.commit()
-            invalidate_cache(category)
-        return prompt
+            target = await db.execute(
+                select(PromptConfig).where(PromptConfig.id == prompt_id)
+            )
+            prompt = target.scalar_one_or_none()
+            if prompt:
+                prompt.is_active = True
+                await db.commit()
+                invalidate_cache(category)
+            return prompt
+        except Exception:
+            await db.rollback()
+            raise
 
 
 async def delete_prompt(prompt_id: str):
     async with await _get_session() as db:
-        result = await db.execute(
-            select(PromptConfig).where(PromptConfig.id == prompt_id)
-        )
-        prompt = result.scalar_one_or_none()
-        if prompt and not prompt.is_active:
-            category = prompt.category
-            await db.delete(prompt)
-            await db.commit()
-            invalidate_cache(category)
-            return True
-        return False
+        try:
+            result = await db.execute(
+                select(PromptConfig).where(PromptConfig.id == prompt_id)
+            )
+            prompt = result.scalar_one_or_none()
+            if prompt and not prompt.is_active:
+                category = prompt.category
+                await db.delete(prompt)
+                await db.commit()
+                invalidate_cache(category)
+                return True
+            return False
+        except Exception:
+            await db.rollback()
+            raise
 
 
 async def init_default_prompts():
     """Insert default prompts if table is empty."""
     async with await _get_session() as db:
-        result = await db.execute(select(sql_func.count(PromptConfig.id)))
-        count = result.scalar()
-        if count == 0:
-            for cat, info in DEFAULT_PROMPTS.items():
-                prompt = PromptConfig(
-                    category=cat,
-                    name=info["name"],
-                    content=info["content"],
-                    version=1,
-                    is_active=True,
-                    description=info["description"],
-                )
-                db.add(prompt)
-            await db.commit()
+        try:
+            result = await db.execute(select(sql_func.count(PromptConfig.id)))
+            count = result.scalar()
+            if count == 0:
+                for cat, info in DEFAULT_PROMPTS.items():
+                    prompt = PromptConfig(
+                        category=cat,
+                        name=info["name"],
+                        content=info["content"],
+                        version=1,
+                        is_active=True,
+                        description=info["description"],
+                    )
+                    db.add(prompt)
+                await db.commit()
+        except Exception:
+            await db.rollback()
+            raise

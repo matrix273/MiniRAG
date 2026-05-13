@@ -14,9 +14,11 @@ DEFAULT_CONFIGS = {
 }
 
 
+_session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
 async def _get_session() -> AsyncSession:
-    AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    return AsyncSessionLocal()
+    return _session_factory()
 
 
 def invalidate_cache(key: str = None):
@@ -54,23 +56,31 @@ async def list_configs():
 
 async def update_config(key: str, value: str):
     async with await _get_session() as db:
-        result = await db.execute(select(SystemConfig).where(SystemConfig.key == key))
-        row = result.scalar_one_or_none()
-        if row:
-            row.value = value
-        else:
-            row = SystemConfig(key=key, value=value)
-            db.add(row)
-        await db.commit()
-        invalidate_cache(key)
-        return row
+        try:
+            result = await db.execute(select(SystemConfig).where(SystemConfig.key == key))
+            row = result.scalar_one_or_none()
+            if row:
+                row.value = value
+            else:
+                row = SystemConfig(key=key, value=value)
+                db.add(row)
+            await db.commit()
+            invalidate_cache(key)
+            return row
+        except Exception:
+            await db.rollback()
+            raise
 
 
 async def init_default_configs():
     async with await _get_session() as db:
-        result = await db.execute(select(SystemConfig))
-        existing = {row.key for row in result.scalars().all()}
-        for key, info in DEFAULT_CONFIGS.items():
-            if key not in existing:
-                db.add(SystemConfig(key=key, value=info["value"], description=info["description"]))
-        await db.commit()
+        try:
+            result = await db.execute(select(SystemConfig))
+            existing = {row.key for row in result.scalars().all()}
+            for key, info in DEFAULT_CONFIGS.items():
+                if key not in existing:
+                    db.add(SystemConfig(key=key, value=info["value"], description=info["description"]))
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise

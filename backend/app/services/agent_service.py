@@ -10,15 +10,17 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
+# Set up env vars once at module load
+api_key = settings.DASHSCOPE_API_KEY or settings.OPENAI_API_KEY
+if api_key:
+    os.environ["OPENAI_API_KEY"] = api_key
+
 
 def create_model() -> OpenAIChatCompletionsModel:
     """Create OpenAIChatCompletionsModel pointed at DashScope."""
-    api_key = settings.DASHSCOPE_API_KEY or settings.OPENAI_API_KEY
-    os.environ["OPENAI_API_KEY"] = api_key
-
     client = AsyncOpenAI(
         base_url=settings.OPENAI_BASE_URL,
-        api_key=api_key,
+        api_key=settings.DASHSCOPE_API_KEY or settings.OPENAI_API_KEY,
     )
     # Strip dashscope/ prefix if present (e.g. "dashscope/qwen-plus" -> "qwen-plus")
     model_name = settings.DEFAULT_MODEL

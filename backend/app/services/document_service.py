@@ -153,7 +153,6 @@ class ChatService:
         from app.services.prompt_service import get_active_prompt
         from app.services.system_config_service import get_config_int
         from app.services.agent_service import create_agent, run_agent_with_guardrails, create_model
-        from litellm import completion as litellm_completion
 
         doc_structure = document.structure
         if not doc_structure:
@@ -213,7 +212,7 @@ class ChatService:
 
     async def _fallback_query(self, document: Document, query: str, system_prompt: str) -> str:
         """Fallback using structure summary + direct litellm call."""
-        from litellm import completion as litellm_completion
+        from litellm import acompletion
 
         structure_summary = self._extract_structure_summary(document.structure)
 
@@ -222,7 +221,7 @@ class ChatService:
             os.environ["OPENAI_API_KEY"] = os.environ.get("DASHSCOPE_API_KEY")
 
         try:
-            response = litellm_completion(
+            response = await acompletion(
                 model=model,
                 messages=[
                     {"role": "system", "content": system_prompt},
