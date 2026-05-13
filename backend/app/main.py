@@ -68,6 +68,9 @@ async def startup():
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     from app.services.system_config_service import init_default_configs
     await init_default_configs()
+    # Initialize default prompts in DB
+    from app.services.prompt_service import init_default_prompts
+    await init_default_prompts()
 
 
 # ========== Document Endpoints ==========
