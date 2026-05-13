@@ -272,6 +272,90 @@ class ChatService:
 
         return answer, citations
 
+    async def query_documents(
+        self,
+        documents: list,
+        query: str,
+        chat_history: list = None,
+    ) -> tuple[str, list]:
+        """
+        Query multiple documents with merged context via a single LLM call.
+        Returns: (answer, citations)
+        """
+        # Ensure all documents are loaded in client memory
+        for doc in documents:
+            await self.doc_service._ensure_doc_in_client(doc)
+
+        # Build system prompt
+        agent_prompt = await get_active_prompt("agent_system")
+        rag_template = await get_active_prompt("rag_template")
+        if rag_template:
+            agent_prompt = f"{agent_prompt}\n\n{rag_template}"
+
+        # Build combined document context
+        doc_sections = []
+        for doc in documents:
+            section = f"Document: {doc.original_name}"
+            if doc.doc_description:
+                section += f"\nDescription: {doc.doc_description}"
+            if doc.page_count:
+                section += f"\nPages: {doc.page_count}"
+
+            structure_summary = self._extract_structure_summary(doc.structure)
+            if structure_summary and structure_summary != "No structure available":
+                section += f"\nStructure:\n{structure_summary}"
+
+            doc_sections.append(section)
+
+        agent_prompt += "\n\n=== Available Documents ===\n\n"
+        agent_prompt += "\n\n---\n\n".join(doc_sections)
+
+        # Add chat history
+        if chat_history:
+            history_text = "\n".join(
+                f"{msg.get('role', 'user')}: {msg.get('content', '')}"
+                for msg in chat_history[-5:]
+            )
+            agent_prompt += f"\n\nChat history:\n{history_text}"
+
+        # Single LLM call with all document context
+        model = os.environ.get("DEFAULT_MODEL", settings.DEFAULT_MODEL)
+        if os.environ.get("DASHSCOPE_API_KEY"):
+            os.environ["OPENAI_API_KEY"] = os.environ.get("DASHSCOPE_API_KEY")
+
+        try:
+            response = await acompletion(
+                model=model,
+                messages=[
+                    {"role": "system", "content": agent_prompt},
+                    {"role": "user", "content": query},
+                ],
+                temperature=0.7,
+                max_tokens=2000,
+            )
+            answer = response.choices[0].message.content
+        except Exception as e:
+            return f"Error processing question: {str(e)}", []
+
+        answer = self._convert_latex_brackets(answer)
+
+        # Extract citations from all documents
+        all_citations = []
+        for doc in documents:
+            pages = doc.pages if hasattr(doc, 'pages') else []
+            if pages:
+                # Use first 3 pages as context citations
+                for pd in pages[:3]:
+                    if isinstance(pd, dict):
+                        all_citations.append({
+                            "page": pd.get("page", 0),
+                            "text": pd.get("content", "")[:2000],
+                            "node_title": f"{doc.original_name} - Page {pd.get('page', 0)}",
+                            "document_id": doc.id,
+                        })
+
+        return answer, all_citations[:5]
+
     async def _fallback_query(self, document: Document, query: str, system_prompt: str) -> str:
         """Fallback using structure summary + direct litellm call."""
         structure_summary = self._extract_structure_summary(document.structure)
@@ -414,7 +498,8 @@ class ChatService:
                     citations.append({
                         "page": page_num,
                         "text": text,
-                        "node_title": f"Page {page_num}"
+                        "node_title": f"Page {page_num}",
+                        "document_id": document.id
                     })
             
             return citations
@@ -434,7 +519,8 @@ class ChatService:
                     citations.append({
                         "page": idx,
                         "text": text,
-                        "node_title": f"Page {idx}"
+                        "node_title": f"Page {idx}",
+                        "document_id": document.id
                     })
                     seen_pages.add(idx)
             except ValueError:

@@ -378,50 +378,81 @@ async def create_chat_session(
     chat_data: ChatSessionCreate,
     db: AsyncSession = Depends(get_db)
 ):
-    """Create a new chat session for a document."""
+    """Create a new chat session for a document (supports multiple documents)."""
     from sqlalchemy import select
-    
-    # Verify document exists
+
+    # Verify primary document exists
     result = await db.execute(select(Document).where(Document.id == doc_id))
     doc = result.scalar_one_or_none()
-    
+
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    
+
     if doc.status != "completed":
         raise HTTPException(status_code=400, detail="Document not fully processed yet")
-    
+
+    # Build document_ids list: include primary doc + any additional docs
+    document_ids = chat_data.document_ids or []
+    if doc_id not in document_ids:
+        document_ids.insert(0, doc_id)
+
     session = ChatSession(
         document_id=doc_id,
+        document_ids=document_ids if len(document_ids) > 1 else None,
         title=chat_data.title or "New Chat",
     )
     db.add(session)
     await db.commit()
-    
+
     return ChatSessionResponse(
         id=session.id,
         document_id=doc_id,
+        document_ids=session.document_ids,
         title=session.title,
         created_at=session.created_at,
     )
+
+
+@app.get("/api/chat/sessions", response_model=List[ChatSessionResponse])
+async def list_all_chat_sessions(db: AsyncSession = Depends(get_db)):
+    """List all chat sessions across all documents."""
+    from sqlalchemy import select
+
+    result = await db.execute(
+        select(ChatSession)
+        .order_by(ChatSession.created_at.desc())
+    )
+    sessions = result.scalars().all()
+
+    return [
+        ChatSessionResponse(
+            id=s.id,
+            document_id=s.document_id,
+            document_ids=s.document_ids,
+            title=s.title,
+            created_at=s.created_at,
+        )
+        for s in sessions
+    ]
 
 
 @app.get("/api/documents/{doc_id}/chat", response_model=List[ChatSessionResponse])
 async def list_chat_sessions(doc_id: str, db: AsyncSession = Depends(get_db)):
     """List all chat sessions for a document."""
     from sqlalchemy import select
-    
+
     result = await db.execute(
         select(ChatSession)
         .where(ChatSession.document_id == doc_id)
         .order_by(ChatSession.created_at.desc())
     )
     sessions = result.scalars().all()
-    
+
     return [
         ChatSessionResponse(
             id=s.id,
-            document_id=doc_id,
+            document_id=s.document_id,
+            document_ids=s.document_ids,
             title=s.title,
             created_at=s.created_at,
         )
@@ -461,24 +492,26 @@ async def send_message(
 ):
     """Send a message and get AI response using PageIndex reasoning-based retrieval."""
     from sqlalchemy import select
-    
+
     # Get session
     result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
     session = result.scalar_one_or_none()
-    
+
     if not session:
         raise HTTPException(status_code=404, detail="Chat session not found")
-    
-    # Get document
-    result = await db.execute(select(Document).where(Document.id == session.document_id))
-    document = result.scalar_one_or_none()
-    
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-    
-    if document.status != "completed":
-        raise HTTPException(status_code=400, detail="Document not fully processed yet")
-    
+
+    # Get all documents (supports multi-document sessions)
+    document_ids = session.document_ids or [session.document_id]
+    documents = []
+    for doc_id in document_ids:
+        result = await db.execute(select(Document).where(Document.id == doc_id))
+        doc = result.scalar_one_or_none()
+        if doc and doc.status == "completed":
+            documents.append(doc)
+
+    if not documents:
+        raise HTTPException(status_code=400, detail="No valid documents found in session")
+
     # Save user message
     user_message = ChatMessage(
         session_id=session_id,
@@ -487,7 +520,7 @@ async def send_message(
     )
     db.add(user_message)
     await db.commit()
-    
+
     # Get chat history
     result = await db.execute(
         select(ChatMessage)
@@ -495,24 +528,35 @@ async def send_message(
         .order_by(ChatMessage.created_at)
     )
     history = result.scalars().all()
-    
-    # Query AI with PageIndex reasoning-based retrieval
+
+    chat_history = [
+        {"role": msg.role, "content": msg.content}
+        for msg in history[-10:]  # Include last 10 messages for context
+    ]
+
+    # Query AI with multi-document context
     try:
-        answer, citations = await chat_service.query_document(
-            document=document,
-            query=message_data.content,
-            chat_history=[
-                {"role": msg.role, "content": msg.content}
-                for msg in history[-10:]  # Include last 10 messages for context
-            ]
-        )
+        if len(documents) == 1:
+            # Single document query
+            answer, citations = await chat_service.query_document(
+                document=documents[0],
+                query=message_data.content,
+                chat_history=chat_history,
+            )
+        else:
+            # Multi-document query
+            answer, citations = await chat_service.query_documents(
+                documents=documents,
+                query=message_data.content,
+                chat_history=chat_history,
+            )
     except Exception as e:
         # Log error and return fallback response
         import logging
         logging.error(f"Error querying document: {e}")
         answer = f"I'm sorry, I encountered an error processing your question. Error: {str(e)}"
         citations = []
-    
+
     # Save AI response
     ai_message = ChatMessage(
         session_id=session_id,
@@ -522,7 +566,7 @@ async def send_message(
     )
     db.add(ai_message)
     await db.commit()
-    
+
     return ChatMessageResponse(
         id=ai_message.id,
         role=ai_message.role,

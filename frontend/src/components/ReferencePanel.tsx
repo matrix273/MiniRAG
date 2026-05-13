@@ -23,6 +23,7 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
   const [pageContent, setPageContent] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [pdfUrl, setPdfUrl] = useState<string>('')
+  const [pdfUrlCache, setPdfUrlCache] = useState<Record<string, string>>({})
   const [searchResults, setSearchResults] = useState<{ text: string; index: number }[]>([])
   const [currentMatchIndex, setCurrentMatchIndex] = useState(-1)
 
@@ -30,24 +31,40 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
 
   // Fetch original page content when citation is selected
   useEffect(() => {
-    if (!selectedCitation || !documentId) {
+    if (!selectedCitation) {
       setPageContent('')
       setPdfUrl('')
       return
     }
-    
+
+    // Use citation's document_id if available, otherwise fall back to prop
+    const targetDocId = selectedCitation.document_id || documentId
+    if (!targetDocId) {
+      setPageContent('')
+      setPdfUrl('')
+      return
+    }
+
     const fetchContent = async () => {
       setLoading(true)
       try {
-        const response = await documentApi.getPageContent(documentId, selectedCitation.page)
+        const response = await documentApi.getPageContent(targetDocId, selectedCitation.page)
         setPageContent(response.content)
-        
+
         // If it's a PDF, get the file URL for preview
         if (response.doc_type === 'pdf') {
-          const fileUrl = documentApi.getFileUrl(documentId)
-        if (fileUrl) {
-          setPdfUrl(fileUrl)
+          // Check cache first
+          if (pdfUrlCache[targetDocId]) {
+            setPdfUrl(pdfUrlCache[targetDocId])
+          } else {
+            const fileUrl = documentApi.getFileUrl(targetDocId)
+            if (fileUrl) {
+              setPdfUrl(fileUrl)
+              setPdfUrlCache(prev => ({ ...prev, [targetDocId]: fileUrl }))
+            }
           }
+        } else {
+          setPdfUrl('')
         }
       } catch (error) {
         console.error('Failed to fetch page content:', error)
@@ -56,7 +73,7 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
         setLoading(false)
       }
     }
-    
+
     fetchContent()
   }, [selectedCitation, documentId])
 

@@ -91,14 +91,20 @@ export const documentApi = {
 // Chat
 export const chatApi = {
   // Create new chat session
-  createSession: async (docId: string, title?: string): Promise<ChatSession> => {
-    const response = await api.post(`/documents/${docId}/chat`, { title })
+  createSession: async (docId: string, title?: string, documentIds?: string[]): Promise<ChatSession> => {
+    const response = await api.post(`/documents/${docId}/chat`, { title, document_ids: documentIds })
     return response.data
   },
-  
+
   // List chat sessions for document
   listSessions: async (docId: string): Promise<ChatSession[]> => {
     const response = await api.get(`/documents/${docId}/chat`)
+    return response.data
+  },
+
+  // List all chat sessions
+  listAllSessions: async (): Promise<ChatSession[]> => {
+    const response = await api.get('/chat/sessions')
     return response.data
   },
   

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Button, Typography, Select, Tooltip, App } from 'antd'
-import { 
-  SendOutlined, 
-  PlusOutlined, 
-  CopyOutlined, 
+import { Button, Typography, TreeSelect, Tooltip, App, Dropdown } from 'antd'
+import {
+  SendOutlined,
+  PlusOutlined,
+  CopyOutlined,
   CheckOutlined,
   FileTextOutlined,
+  FolderOutlined,
   MessageOutlined,
   MoreOutlined,
   DownOutlined,
@@ -14,8 +15,8 @@ import {
   MenuOutlined,
   CloseOutlined,
 } from '@ant-design/icons'
-import { chatApi, documentApi } from '@/services/api'
-import type { ChatSession, Document } from '@/types'
+import { chatApi, documentApi, folderApi } from '@/services/api'
+import type { ChatSession, Document, Folder } from '@/types'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
@@ -709,6 +710,7 @@ const ChatPage = () => {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState('')
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null)
+  const [selectedDocs, setSelectedDocs] = useState<string[]>([])
   const [sending, setSending] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -727,8 +729,13 @@ const ChatPage = () => {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   // PDF preview panel state
   const [pdfPage, setPdfPage] = useState(1)
+  const [pdfPreviewDocId, setPdfPreviewDocId] = useState<string | null>(null)
   // 消息多选状态
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set())
+
+  // Folder tree state
+  const [folders, setFolders] = useState<Folder[]>([])
+  const [treeData, setTreeData] = useState<any[]>([])
 
   // Auto scroll to bottom
   const scrollToBottom = () => {
@@ -748,44 +755,94 @@ const ChatPage = () => {
   }
 
   useEffect(() => {
-    fetchDocuments()
+    fetchFoldersAndDocs()
+    loadAllSessions()
   }, [])
 
-  const fetchDocuments = async () => {
+  const fetchFoldersAndDocs = async () => {
     try {
-      const docs = await documentApi.list()
+      const [folderList, docs] = await Promise.all([
+        folderApi.list(),
+        documentApi.list(),
+      ])
       const completedDocs = docs.filter(d => d.status === 'completed')
+      setFolders(folderList)
       setDocuments(completedDocs)
-      if (completedDocs.length > 0 && !selectedDoc) {
-        handleSelectDoc(completedDocs[0].id)
-      }
+      setTreeData(buildTreeData(folderList, completedDocs))
     } catch (error) {
-      message.error('Failed to fetch documents')
+      message.error('Failed to load data')
     }
   }
 
-  const fetchSessions = async (docId: string) => {
-    try {
-      const sess = await chatApi.listSessions(docId)
-      setSessions(sess)
-      if (sess.length > 0) {
-        handleSelectSession(sess[0].id)
-      } else {
-        setCurrentSession(null)
-        setMessages([])
-      }
-    } catch (error) {
-      message.error('Failed to fetch chat sessions')
+  const buildTreeData = (folderList: Folder[], docs: Document[]): any[] => {
+    const buildNodes = (fl: Folder[]): any[] => {
+      return fl.map(folder => {
+        const childDocs = docs.filter(d => d.folder_id === folder.id)
+        return {
+          value: `folder:${folder.id}`,
+          title: folder.name,
+          icon: <FolderOutlined style={{ color: '#f59e0b' }} />,
+          children: [
+            ...buildNodes(folder.children || []),
+            ...childDocs.map(doc => ({
+              value: `doc:${doc.id}`,
+              title: doc.filename,
+              icon: <FileTextOutlined style={{ color: '#6366f1' }} />,
+              isLeaf: true,
+            })),
+          ],
+        }
+      })
     }
+
+    const rootDocs = docs.filter(d => !d.folder_id)
+    const topLevelFolders = folderList.filter(f => !f.parent_id)
+
+    return [
+      ...buildNodes(topLevelFolders),
+      ...rootDocs.map(doc => ({
+        value: `doc:${doc.id}`,
+        title: doc.filename,
+        icon: <FileTextOutlined style={{ color: '#6366f1' }} />,
+        isLeaf: true,
+      })),
+    ]
   }
 
-  const fetchMessages = async (sessionId: string) => {
-    try {
-      const msgs = await chatApi.getMessages(sessionId)
-      setMessages(msgs as Message[])
-    } catch (error) {
-      message.error('Failed to fetch messages')
+  // 将 TreeSelect 的值（可能包含 folder:xxx）解析为纯文档 ID 列表
+  const resolveTreeValues = (values: string[]): string[] => {
+    const docIds: string[] = []
+    const resolveFolder = (folder: Folder) => {
+      // 递归收集该文件夹下所有文档（含子文件夹）
+      for (const child of folder.children || []) {
+        resolveFolder(child)
+      }
+      for (const doc of folder.documents || []) {
+        if (doc.status === 'completed') {
+          docIds.push(doc.id)
+        }
+      }
     }
+
+    for (const val of values) {
+      if (val.startsWith('doc:')) {
+        docIds.push(val.replace('doc:', ''))
+      } else if (val.startsWith('folder:')) {
+        const folderId = val.replace('folder:', '')
+        // 递归查找文件夹及其子文件夹中的所有文档
+        const findFolder = (fl: Folder[]): Folder | null => {
+          for (const f of fl) {
+            if (f.id === folderId) return f
+            const found = findFolder(f.children || [])
+            if (found) return found
+          }
+          return null
+        }
+        const folder = findFolder(folders)
+        if (folder) resolveFolder(folder)
+      }
+    }
+    return [...new Set(docIds)]
   }
 
   const handleCreateSession = async () => {
@@ -795,7 +852,7 @@ const ChatPage = () => {
     }
 
     try {
-      const session = await chatApi.createSession(selectedDoc, 'New Chat')
+      const session = await chatApi.createSession(selectedDoc, 'New Chat', selectedDocs)
       setSessions([session, ...sessions])
       setCurrentSession(session.id)
       setMessages([])
@@ -807,11 +864,6 @@ const ChatPage = () => {
     } catch (error) {
       message.error('Failed to create session')
     }
-  }
-
-  const handleSelectSession = (sessionId: string) => {
-    setCurrentSession(sessionId)
-    fetchMessages(sessionId)
   }
 
   const handleSendMessage = async () => {
@@ -850,9 +902,67 @@ const ChatPage = () => {
     }
   }
 
-  const handleSelectDoc = (docId: string) => {
-    setSelectedDoc(docId)
-    fetchSessions(docId)
+  const loadAllSessions = async () => {
+    try {
+      const allSessions = await chatApi.listAllSessions()
+      setSessions(allSessions)
+      setCurrentSession(null)
+      setMessages([])
+    } catch {
+      message.error('Failed to load sessions')
+    }
+  }
+
+  const handleSelectSession = async (sessionId: string) => {
+    setCurrentSession(sessionId)
+
+    // 加载会话消息
+    const msgs = await chatApi.getMessages(sessionId)
+    setMessages(msgs as Message[])
+
+    // 查找会话关联的文档
+    const session = sessions.find(s => s.id === sessionId)
+    if (session) {
+      const docIds = session.document_ids || [session.document_id]
+      setSelectedDoc(docIds[0])
+      setSelectedDocs(docIds)
+    }
+  }
+
+  const handleSelectDocs = async (docIds: string[]) => {
+    if (docIds.length === 0) {
+      // 清空选择时，加载全量历史会话
+      setSelectedDoc(null)
+      setSelectedDocs([])
+      await loadAllSessions()
+      return
+    }
+
+    const primaryDocId = docIds[0]
+    setSelectedDoc(primaryDocId)
+
+    // 尝试找到一个已有会话，其 document_ids 与当前选中完全匹配
+    const allSessions = await chatApi.listSessions(primaryDocId)
+    setSessions(allSessions)
+
+    const matchSession = allSessions.find((s: any) => {
+      const sessionDocIds = s.document_ids || [s.document_id]
+      if (sessionDocIds.length !== docIds.length) return false
+      return docIds.every(id => sessionDocIds.includes(id))
+    })
+
+    if (matchSession) {
+      setCurrentSession(matchSession.id)
+      const msgs = await chatApi.getMessages(matchSession.id)
+      setMessages(msgs as Message[])
+    } else {
+      // 没有匹配的会话，创建新会话
+      const session = await chatApi.createSession(primaryDocId, 'New Chat', docIds)
+      setSessions([session, ...allSessions])
+      setCurrentSession(session.id)
+      setMessages([])
+      setTimeout(() => inputRef.current?.focus(), 100)
+    }
   }
 
   const handleCitationClick = (citations: Array<{ page: number; text: string; node_title?: string }>, index: number) => {
@@ -873,7 +983,7 @@ const ChatPage = () => {
     setSelectedCitationIndex(index)
   }
 
-  const selectedDocInfo = documents.find(d => d.id === selectedDoc)
+  const selectedDocsInfo = selectedDocs.map(id => documents.find(d => d.id === id)).filter(Boolean)
 
   // 删除选中的消息
   const handleDeleteMessages = async () => {
@@ -972,39 +1082,53 @@ const ChatPage = () => {
           />
         </div>
 
-        {/* Document Selector */}
+        {/* Document Selector - Tree Select (Multiple) */}
         <div style={{ padding: 16, borderBottom: '1px solid #e5e7eb' }}>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8, color: '#6b7280' }}>
-            Based on Document
+            基于文档 (支持多选)
           </Text>
-          <Select
+          <TreeSelect
             style={{ width: '100%' }}
-            value={selectedDoc}
-            onChange={handleSelectDoc}
-            variant="borderless"
-            options={documents.map(doc => ({
-              value: doc.id,
-              label: (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <FileTextOutlined style={{ color: '#6366f1' }} />
-                  <span style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {doc.filename}
-                  </span>
-                </div>
-              ),
-            }))}
+            value={selectedDocs.map(id => `doc:${id}`)}
+            treeData={treeData}
+            placeholder="选择文件夹或文件"
+            treeDefaultExpandAll
+            showSearch
+            multiple
+            maxTagCount="responsive"
+            filterTreeNode={(input, node) =>
+              String(node?.title ?? '').toLowerCase().includes(input.toLowerCase())
+            }
+            onChange={(values: string[]) => {
+              // 将 folder:xxx 和 doc:xxx 全部解析为纯文档 ID 列表
+              const docIds = resolveTreeValues(values)
+
+              // 检查是否有新增的文档
+              const addedDocs = docIds.filter(id => !selectedDocs.includes(id))
+
+              if (addedDocs.length > 0) {
+                // 选择新文档时自动创建会话
+                handleSelectDocs(docIds)
+              } else if (docIds.length < selectedDocs.length) {
+                // 取消选择某些文档
+                handleSelectDocs(docIds)
+              }
+              setSelectedDocs(docIds)
+            }}
+            treeCheckable
+            showCheckedStrategy={TreeSelect.SHOW_CHILD}
             styles={{ popup: { root: { borderRadius: 8 } } }}
           />
         </div>
 
         {/* New Chat Button */}
-        <div style={{ padding: 12 }}>
-          <Button 
+        <div style={{ padding: '8px 12px' }}>
+          <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={handleCreateSession}
             block
-            style={{ 
+            style={{
               borderRadius: 8,
               height: 40,
               background: '#111827',
@@ -1053,18 +1177,17 @@ const ChatPage = () => {
         }}
       >
         {/* Header */}
-        {selectedDocInfo && (
-          <div 
-            style={{ 
-              padding: '16px 24px', 
+        {(selectedDocsInfo.length > 0 || sidebarCollapsed) && (
+          <div
+            style={{
+              padding: '16px 24px',
               borderBottom: '1px solid #e5e7eb',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              {/* Expand Sidebar Button */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
               {sidebarCollapsed && (
                 <Button
                   type="text"
@@ -1072,13 +1195,12 @@ const ChatPage = () => {
                   onClick={() => {
                     setSidebarCollapsed(false)
                     localStorage.setItem('chatSidebarCollapsed', JSON.stringify(false))
-                    // 展开后刷新 PDF
                     setTimeout(() => {
                       const refreshFn = (window as any).__pdfViewerRefresh
                       if (refreshFn) refreshFn()
                     }, 100)
                   }}
-                  style={{ marginRight: 4 }}
+                  style={{ marginRight: 4, flexShrink: 0 }}
                 />
               )}
               <div
@@ -1090,19 +1212,48 @@ const ChatPage = () => {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  flexShrink: 0,
                 }}
               >
                 <FileTextOutlined style={{ color: '#6366f1' }} />
               </div>
-              <div>
-                <div style={{ fontWeight: 500, fontSize: 14 }}>{selectedDocInfo.filename}</div>
-                <div style={{ fontSize: 12, color: '#6b7280' }}>
-                  {selectedDocInfo.page_count} pages · {messages.length} messages
-                </div>
+              <div style={{ minWidth: 0 }}>
+                {selectedDocsInfo.length === 0 ? (
+                  <div style={{ fontWeight: 500, fontSize: 14, color: '#6b7280' }}>全量历史会话</div>
+                ) : selectedDocsInfo.length === 1 ? (
+                  <>
+                    <div style={{ fontWeight: 500, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedDocsInfo[0]!.filename}</div>
+                    <div style={{ fontSize: 12, color: '#6b7280' }}>
+                      {selectedDocsInfo[0]!.page_count} pages · {messages.length} messages
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontWeight: 500, fontSize: 14 }}>{selectedDocsInfo.length} documents</div>
+                    <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Dropdown
+                        trigger={['hover', 'click']}
+                        overlay={
+                          <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', padding: 8, maxWidth: 300 }}>
+                            {selectedDocsInfo.map(d => (
+                              <div key={d!.id} style={{ padding: '8px 12px', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {d!.filename} ({d!.page_count} pages)
+                              </div>
+                            ))}
+                          </div>
+                        }
+                      >
+                        <span style={{ cursor: 'pointer', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {selectedDocsInfo.map(d => d!.filename.split('.')[0]).join(', ')}
+                        </span>
+                      </Dropdown>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
               <Tooltip title="More options">
                 <Button type="text" icon={<MoreOutlined />} />
               </Tooltip>
@@ -1151,7 +1302,10 @@ const ChatPage = () => {
                 How can I help you today?
               </div>
               <div style={{ fontSize: 14 }}>
-                Ask questions about <strong>{selectedDocInfo?.filename}</strong>
+                Ask questions about {selectedDocsInfo.length === 1
+                  ? <strong>{selectedDocsInfo[0]?.filename}</strong>
+                  : <strong>{selectedDocsInfo.length} documents</strong>
+                }
               </div>
             </div>
           ) : (
@@ -1507,8 +1661,41 @@ const ChatPage = () => {
                     justifyContent: 'space-between',
                   }}
                 >
-                  <div style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>
-                    PDF 预览
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>
+                      PDF 预览
+                    </div>
+                    {selectedDocs.length > 1 && (
+                      <select
+                        value={pdfPreviewDocId || selectedDoc || ''}
+                        onChange={(e) => {
+                          setPdfPreviewDocId(e.target.value)
+                          setPdfPage(1)
+                        }}
+                        style={{
+                          padding: '4px 8px',
+                          borderRadius: 4,
+                          border: '1px solid #e5e7eb',
+                          fontSize: 12,
+                          color: '#374151',
+                          maxWidth: 150,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          cursor: 'pointer',
+                          minWidth: 60,
+                        }}
+                      >
+                        {selectedDocs.map(docId => {
+                          const doc = documents.find(d => d.id === docId)
+                          return (
+                            <option key={docId} value={docId}>
+                              {doc?.filename || docId}
+                            </option>
+                          )
+                        })}
+                      </select>
+                    )}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <button
@@ -1564,7 +1751,7 @@ const ChatPage = () => {
                 {/* PDF Viewer */}
                 <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                   <PDFViewer
-                    url={documentApi.getFileUrl(selectedDoc)}
+                    url={documentApi.getFileUrl(pdfPreviewDocId || selectedDoc)}
                     page={pdfPage}
                     height={800}
                   />

@@ -42,6 +42,7 @@ export interface TreeNode {
 export interface ChatSession {
   id: string
   document_id: string
+  document_ids?: string[]
   title: string
   created_at: string
 }
@@ -58,6 +59,7 @@ export interface Citation {
   page: number
   text: string
   node_title?: string
+  document_id?: string
 }
 
 export interface PromptConfig {
