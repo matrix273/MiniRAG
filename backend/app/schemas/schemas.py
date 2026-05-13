@@ -116,3 +116,39 @@ class ChatMessageResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# Prompt Schemas
+class PromptConfigCreate(BaseModel):
+    name: str
+    content: str
+    description: Optional[str] = None
+
+
+class PromptConfigResponse(BaseModel):
+    id: str
+    category: str
+    name: str
+    content: str
+    version: int
+    is_active: bool
+    description: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# SystemConfig Schemas
+class SystemConfigResponse(BaseModel):
+    key: str
+    value: str
+    description: Optional[str] = None
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SystemConfigUpdate(BaseModel):
+    value: str

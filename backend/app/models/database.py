@@ -99,6 +99,30 @@ class Folder(Base):
     documents: Mapped[List["Document"]] = relationship(back_populates="folder", lazy="selectin")
 
 
+class PromptConfig(Base):
+    """Prompt configuration with version management."""
+    __tablename__ = "prompt_configs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    category: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_active: Mapped[bool] = mapped_column(default=False)
+    description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SystemConfig(Base):
+    """System configuration key-value store."""
+    __tablename__ = "system_configs"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(String(500), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now(), onupdate=func.now(), server_default=func.now())
+
+
 async def init_db():
     """Initialize database tables."""
     async with engine.begin() as conn:
