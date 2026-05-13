@@ -2,7 +2,8 @@
 
 import os
 import asyncio
-from typing import Optional
+import json
+from typing import Optional, List, Tuple
 from openai import AsyncOpenAI
 from agents import Agent, Runner, function_tool, OpenAIChatCompletionsModel, set_tracing_disabled
 
@@ -17,6 +18,50 @@ set_tracing_disabled(True)
 api_key = settings.DASHSCOPE_API_KEY or settings.OPENAI_API_KEY
 if api_key:
     os.environ["OPENAI_API_KEY"] = api_key
+
+
+class TrackedPageIndexClient:
+    """Wrapper around PageIndexClient that tracks page accesses."""
+    
+    def __init__(self, doc_client, doc_id: str):
+        self.doc_client = doc_client
+        self.doc_id = doc_id
+        self.accessed_pages: set = set()
+    
+    def get_document(self) -> str:
+        """Get document metadata."""
+        return self.doc_client.get_document(self.doc_id)
+    
+    def get_document_structure(self) -> str:
+        """Get document structure."""
+        return self.doc_client.get_document_structure(self.doc_id)
+    
+    def get_page_content(self, pages: str) -> str:
+        """Get page content and track which pages were accessed."""
+        # Parse pages like "5-7", "3,8", "12"
+        self._track_pages(pages)
+        return self.doc_client.get_page_content(self.doc_id, pages)
+    
+    def _track_pages(self, pages_str: str):
+        """Parse and track accessed pages."""
+        for part in pages_str.split(','):
+            part = part.strip()
+            if '-' in part:
+                start, end = part.split('-', 1)
+                try:
+                    for p in range(int(start), int(end) + 1):
+                        self.accessed_pages.add(p)
+                except ValueError:
+                    pass
+            else:
+                try:
+                    self.accessed_pages.add(int(part))
+                except ValueError:
+                    pass
+    
+    def get_accessed_pages(self) -> List[int]:
+        """Return sorted list of accessed page numbers."""
+        return sorted(self.accessed_pages)
 
 
 def create_model() -> OpenAIChatCompletionsModel:
@@ -41,50 +86,69 @@ def create_agent(
     doc_id: str,
     system_prompt: str,
     model: Optional[OpenAIChatCompletionsModel] = None,
-) -> Agent:
-    """Create Agent with document tools bound to a specific doc_id."""
+) -> Tuple[Agent, TrackedPageIndexClient]:
+    """Create Agent with document tools bound to a specific doc_id.
+    
+    Returns: (agent, tracked_client) - tracked_client can be used to get accessed pages
+    """
+    # Create tracking wrapper
+    tracked = TrackedPageIndexClient(doc_client, doc_id)
 
     @function_tool
     def get_document() -> str:
-        """Get document metadata: status, page count, name, and description."""
-        return doc_client.get_document(doc_id)
+        """Get document metadata: status, page count, name, and description.
+        
+        ALWAYS call this first to verify the document exists before other operations.
+        """
+        return tracked.get_document()
 
     @function_tool
     def get_document_structure() -> str:
-        """Get the document's full tree structure (without text) to find relevant sections."""
-        return doc_client.get_document_structure(doc_id)
+        """Get the document's full tree structure (without text) to find relevant sections.
+        
+        Call this after get_document() to understand document organization.
+        """
+        return tracked.get_document_structure()
 
     @function_tool
     def get_page_content(pages: str) -> str:
-        """Get the text content of specific pages. Use tight ranges: e.g. '5-7', '3,8', '12'."""
-        return doc_client.get_page_content(doc_id, pages)
+        """Get the text content of specific pages. Use tight ranges: e.g. '5-7', '3,8', '12'.
+        
+        Call this after understanding document structure to retrieve relevant content.
+        """
+        return tracked.get_page_content(pages)
 
     if model is None:
         model = create_model()
 
-    return Agent(
+    agent = Agent(
         name="PageIndex",
         instructions=system_prompt,
         tools=[get_document, get_document_structure, get_page_content],
         model=model,
     )
+    
+    return agent, tracked
 
 
 async def run_agent_with_guardrails(
     agent: Agent,
+    tracked_client: TrackedPageIndexClient,
     query: str,
     max_turns: int = 5,
     timeout_seconds: int = 60,
-) -> tuple[str, bool]:
+) -> tuple[str, bool, List[int]]:
     """Run agent with max_turns and timeout guardrails.
 
-    Returns: (answer, is_fallback)
+    Returns: (answer, is_fallback, accessed_pages)
     """
     try:
         result = await asyncio.wait_for(
             Runner.run(agent, query, max_turns=max_turns),
             timeout=timeout_seconds,
         )
-        return result.final_output or "", False
+        # Get pages that were accessed during tool calls
+        accessed_pages = tracked_client.get_accessed_pages()
+        return result.final_output or "", False, accessed_pages
     except (asyncio.TimeoutError, Exception):
-        return "", True
+        return "", True, []

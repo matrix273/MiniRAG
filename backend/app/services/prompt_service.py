@@ -12,12 +12,26 @@ DEFAULT_PROMPTS = {
     "agent_system": {
         "name": "Agent System Prompt",
         "content": """You are PageIndex, a document QA assistant.
-TOOL USE:
-- Call get_document() first to confirm status and page/line count.
-- Call get_document_structure() to identify relevant page ranges.
-- Call get_page_content(pages="5-7") with tight ranges; never fetch the whole document.
-- Before each tool call, output one short sentence explaining the reason.
-Answer based only on tool output. Be concise.""",
+The document is ALREADY loaded in the system. The tools below are pre-bound to this document.
+DO NOT tell the user the document was not found — it is available.
+
+IMPORTANT: YOU MUST call tools before answering. Do NOT guess or make assumptions.
+
+LANGUAGE: Always answer in the same language as the user's question (Chinese user → Chinese answer, English user → English answer).
+
+TOOL USE (REQUIRED):
+1. Call get_document() FIRST to confirm the document status, page count, and description.
+2. Call get_document_structure() to see the hierarchical tree of sections/chapters.
+3. Call get_page_content(pages="5-7") with tight page ranges to read specific content.
+4. Before each tool call, output one short sentence explaining your reasoning.
+5. Never fetch the entire document at once. Always use tight page ranges.
+
+CRITICAL RULES:
+- Always start by calling get_document() to verify the document exists.
+- NEVER say "document was not found" or "document not available" — the tools are pre-bound to a valid document.
+- If get_document() returns an error, report that specific error message.
+- Answer based only on tool output. Be concise.
+- If you cannot find an answer in the retrieved content, say so honestly — do NOT fabricate information.""",
         "description": "Agent 行为和工具使用策略",
     },
     "rag_template": {
@@ -25,23 +39,23 @@ Answer based only on tool output. Be concise.""",
         "content": """ANSWER FORMAT:
 - Use $ ... $ for inline formulas, $$ ... $$ for display formulas.
   Do NOT use [ ... ] or \\( ... \\) for LaTeX.
-- Cite sources with [1], [2] at the end of each sentence using document content.
-- Only cite pages you actually used.
-- Be clear and concise.""",
+- Cite sources using [1], [2], [3] markers at the end of sentences.
+- When citing, use the page number from the document (e.g., page 5 → [1] if page 5 is your first citation).
+- Only cite pages you actually read with get_page_content().
+- Be clear and concise.
+- Use the same language as the user's question.
+
+CITATION EXAMPLE:
+If you read pages 5 and 8, and the answer uses information from page 5:
+"According to the document, power consumption is 400W [1]. Page 8 shows additional details [2]."
+
+Then cite like: [1] Page 5, [2] Page 8""",
         "description": "RAG 问答答案格式要求",
     },
     "indexing": {
         "name": "Indexing Prompt",
         "content": "Indexing prompts are configured in the pageindex module. This entry serves as a placeholder for future DB-driven indexing configuration.",
         "description": "索引构建提示词（暂存）",
-    },
-    "post_processing": {
-        "name": "Post-Processing Rules",
-        "content": """Post-processing rules:
-1. Convert \\[ ... \\] to $$ ... $$ for KaTeX rendering.
-2. Add citation markers [1], [2] if not present.
-3. Skip conversion for citation numbers like [1] and page refs like 第3页.""",
-        "description": "后处理规则（LaTeX 转换、引用标记）",
     },
 }
 
@@ -77,7 +91,7 @@ async def get_active_prompt(category: str) -> str:
 
 
 async def get_all_active_prompts() -> dict[str, str]:
-    categories = ["agent_system", "rag_template", "indexing", "post_processing"]
+    categories = ["agent_system", "rag_template", "indexing"]
     result = {}
     for cat in categories:
         result[cat] = await get_active_prompt(cat)
@@ -171,23 +185,56 @@ async def delete_prompt(prompt_id: str):
 
 
 async def init_default_prompts():
-    """Insert default prompts if table is empty."""
+    """Initialize or update default prompts. Creates new version if content changed."""
     async with await _get_session() as db:
         try:
-            result = await db.execute(select(sql_func.count(PromptConfig.id)))
-            count = result.scalar()
-            if count == 0:
-                for cat, info in DEFAULT_PROMPTS.items():
-                    prompt = PromptConfig(
+            from sqlalchemy import select as sa_select
+            
+            for cat, info in DEFAULT_PROMPTS.items():
+                default_content = info["content"]
+                
+                # Check current active prompt for this category
+                result = await db.execute(
+                    select(PromptConfig)
+                    .where(PromptConfig.category == cat, PromptConfig.is_active == True)
+                )
+                active_prompt = result.scalar_one_or_none()
+                
+                # If no active prompt, or content is different, create new version
+                if not active_prompt or active_prompt.content != default_content:
+                    # Get max version for this category
+                    result = await db.execute(
+                        sa_select(sql_func.coalesce(sql_func.max(PromptConfig.version), 0))
+                        .where(PromptConfig.category == cat)
+                    )
+                    max_version = result.scalar() or 0
+                    
+                    # Deactivate current active prompt if exists
+                    if active_prompt:
+                        active_prompt.is_active = False
+                    
+                    # Create new version with default content
+                    new_prompt = PromptConfig(
                         category=cat,
                         name=info["name"],
-                        content=info["content"],
-                        version=1,
+                        content=default_content,
+                        version=max_version + 1,
                         is_active=True,
                         description=info["description"],
                     )
-                    db.add(prompt)
-                await db.commit()
+                    db.add(new_prompt)
+                    
+                    # Clear cache for this category
+                    invalidate_cache(cat)
+                    
+                    if active_prompt:
+                        print(f"Updated {cat}: created v{max_version + 1} (content changed)")
+                    else:
+                        print(f"Created {cat}: v{max_version + 1} (new category)")
+                else:
+                    print(f"Skipped {cat}: content unchanged (v{active_prompt.version})")
+            
+            await db.commit()
         except Exception:
             await db.rollback()
             raise

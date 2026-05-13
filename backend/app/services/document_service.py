@@ -1,14 +1,28 @@
 import sys
 import os
 import asyncio
+import logging
+import re
 from typing import Dict, Any, Optional, List
 import json
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.database import Document, get_db
+from sqlalchemy import select
+from sqlalchemy.orm import sessionmaker
+from litellm import acompletion
+
+from app.models.database import Document, get_db, engine
 from app.core.config import get_settings
+from app.services.prompt_service import get_active_prompt
+from app.services.system_config_service import get_config_int
+from app.services.agent_service import create_agent, run_agent_with_guardrails, create_model
 
 settings = get_settings()
+
+# LAZY import pageindex - will be imported after environment variables are set
+def _get_pageindex_client_class():
+    from pageindex import PageIndexClient
+    return PageIndexClient
 
 
 class DocumentService:
@@ -28,7 +42,7 @@ class DocumentService:
                 os.environ["OPENAI_BASE_URL"] = settings.OPENAI_BASE_URL
         
         # LAZY import pageindex after environment variables are set
-        from pageindex import PageIndexClient
+        PageIndexClient = _get_pageindex_client_class()
         
         # Now create the client - it will read the env vars we just set
         self.client = PageIndexClient(
@@ -38,10 +52,6 @@ class DocumentService:
     
     async def index_document(self, doc_id: str, file_path: str, doc_type: str) -> None:
         """Index a document in the background."""
-        from sqlalchemy import select
-        from app.models.database import engine
-        from sqlalchemy.orm import sessionmaker
-        
         # Create a new session for background task
         AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         
@@ -87,6 +97,10 @@ class DocumentService:
                 indexed_doc = self.client.documents.get(indexed_doc_id)
                 if indexed_doc and "pages" in indexed_doc:
                     doc.pages = indexed_doc["pages"]
+
+                # Map DB doc_id to PageIndexClient so Agent tools can find the document
+                if indexed_doc_id != doc.id:
+                    self.client.documents[doc.id] = self.client.documents[indexed_doc_id]
                 
                 await db.commit()
                 
@@ -133,6 +147,50 @@ class DocumentService:
         return "\n\n".join(content_parts)
 
 
+    async def _ensure_doc_in_client(self, document: Document) -> bool:
+        """Ensure document is loaded in PageIndexClient memory.
+        
+        If document is not in client.documents, load from database.
+        """
+        # Check if document is already in client memory
+        if document.id in self.client.documents:
+            # Document exists in memory, ensure it has structure loaded
+            doc_in_mem = self.client.documents[document.id]
+            if doc_in_mem.get('structure') is not None:
+                return True
+        
+        # Document not in memory or incomplete - load from DB
+        try:
+            # Reconstruct document info from database
+            doc_info = {
+                'id': document.id,
+                'type': document.doc_type,
+                'path': os.path.join(settings.UPLOAD_DIR, document.filename),
+                'doc_name': document.original_name,
+                'doc_description': document.doc_description or '',
+                'structure': document.structure,
+            }
+            
+            if document.doc_type == 'pdf':
+                doc_info['page_count'] = document.page_count or 0
+                doc_info['pages'] = document.pages or []
+            else:  # markdown
+                doc_info['line_count'] = document.line_count or 0
+            
+            # Add to client memory
+            self.client.documents[document.id] = doc_info
+            
+            # Verify structure is present
+            if document.structure:
+                return True
+            
+            return False
+            
+        except Exception as e:
+            logging.error(f"Failed to load document {document.id} into client: {e}")
+            return False
+
+
 class ChatService:
     """Service for document-based chat using agentic reasoning-based retrieval."""
 
@@ -150,13 +208,12 @@ class ChatService:
 
         Returns: (answer, citations)
         """
-        from app.services.prompt_service import get_active_prompt
-        from app.services.system_config_service import get_config_int
-        from app.services.agent_service import create_agent, run_agent_with_guardrails, create_model
-
         doc_structure = document.structure
         if not doc_structure:
             return "Document structure not available. Please reindex the document.", []
+
+        # Ensure document is loaded in PageIndexClient memory
+        await self.doc_service._ensure_doc_in_client(document)
 
         # Build Agent system prompt from DB prompts
         agent_prompt = await get_active_prompt("agent_system")
@@ -185,15 +242,16 @@ class ChatService:
 
         # Create and run agent
         model = create_model()
-        agent = create_agent(
+        agent, tracked_client = create_agent(
             doc_client=self.doc_service.client,
             doc_id=document.id,
             system_prompt=agent_prompt,
             model=model,
         )
 
-        answer, is_fallback = await run_agent_with_guardrails(
+        answer, is_fallback, accessed_pages = await run_agent_with_guardrails(
             agent=agent,
+            tracked_client=tracked_client,
             query=query,
             max_turns=max_turns,
             timeout_seconds=timeout_seconds,
@@ -205,15 +263,17 @@ class ChatService:
 
         # Post-processing
         answer = self._convert_latex_brackets(answer)
-        answer = self._add_citation_markers(answer, document)
-        citations = self._extract_citations(document, answer)
+        
+        # Auto-add citation markers based on accessed pages
+        if accessed_pages:
+            answer = self._add_auto_citations(answer, accessed_pages, document)
+        
+        citations = self._extract_citations(document, answer, accessed_pages)
 
         return answer, citations
 
     async def _fallback_query(self, document: Document, query: str, system_prompt: str) -> str:
         """Fallback using structure summary + direct litellm call."""
-        from litellm import acompletion
-
         structure_summary = self._extract_structure_summary(document.structure)
 
         model = os.environ.get("DEFAULT_MODEL", settings.DEFAULT_MODEL)
@@ -266,8 +326,6 @@ class ChatService:
 
     def _convert_latex_brackets(self, answer):
         """Convert [ ... ] and \\[ ... \\] to $$ ... $$ for KaTeX rendering."""
-        import re
-
         pattern1 = r'\\\[(.*?)\\\]'
         pattern2 = r'\[(\s*\\[a-zA-Z].*?)\]'
 
@@ -287,42 +345,101 @@ class ChatService:
         answer = re.sub(pattern2, replace_bracket, answer)
         return answer
 
-    def _add_citation_markers(self, answer, document):
-        """Add [1], [2] citation markers to answer if not present."""
-        import re
-        if re.search(r'\[\d+\]', answer):
+    def _add_auto_citations(self, answer: str, accessed_pages: list, document) -> str:
+        """Automatically add citation markers at the end of answer.
+        
+        Removes any existing [N] citations from AI and adds clean citations
+        at the end of the answer based on tracked page accesses.
+        
+        Args:
+            answer: The AI's answer text (may contain AI-generated citations)
+            accessed_pages: List of page numbers that were accessed via get_page_content
+            document: Document object for page data
+        
+        Returns:
+            Answer with [1], [2], etc. citation markers at the end
+        """
+        # Step 1: Remove existing citation markers at the END of the answer only
+        # This preserves [N] within the text (e.g., "[3] 第3章", "[500V]", "[100%]")
+        # Only remove consecutive citations at the very end like "... [1][2][3]"
+        answer = re.sub(r'(\s*\[\d+\])+\s*$', '', answer)
+        answer = answer.rstrip()
+        
+        if not accessed_pages:
             return answer
-        return answer
+        
+        # Step 2: Add citation markers at the end of the answer
+        # [1] = first accessed page, [2] = second accessed page, etc.
+        pages_to_cite = accessed_pages[:5]  # Max 5 citations
+        
+        citation_markers = ''.join([f' [{i+1}]' for i in range(len(pages_to_cite))])
+        
+        return answer + citation_markers
 
-    def _extract_citations(self, document, answer=""):
-        """Extract citation information from document pages."""
+    def _extract_citations(self, document, answer="", accessed_pages=None):
+        """Extract citation information from accessed pages.
+        
+        Args:
+            document: Document object
+            answer: AI answer with [1], [2] markers
+            accessed_pages: List of page numbers that were actually accessed
+        
+        Returns:
+            List of citation objects for frontend display
+        """
         import re
         citations = []
-        if not document.pages:
+        
+        # Get pages from document
+        pages = document.pages if hasattr(document, 'pages') else []
+        if not pages:
             return citations
-
-        bracket_citations = re.findall(r'\[(\d+)\]', answer)
-
-        if bracket_citations:
-            for idx_str in bracket_citations[:3]:
-                idx = int(idx_str) - 1
-                if 0 <= idx < len(document.pages):
-                    pd = document.pages[idx]
+        
+        # Build a mapping: page_num -> page_content
+        page_map = {}
+        for pd in pages:
+            if isinstance(pd, dict):
+                page_num = pd.get('page', 0)
+                page_map[page_num] = pd
+        
+        # If we have accessed_pages from tool tracking, use them directly
+        if accessed_pages:
+            # Create citation mapping: index -> page_num
+            citation_pages = accessed_pages[:5]  # Max 5 citations
+            
+            for i, page_num in enumerate(citation_pages):
+                if page_num in page_map:
+                    pd = page_map[page_num]
                     text = pd.get("content", "")[:2000]
                     citations.append({
-                        "page": pd.get("page", idx + 1),
+                        "page": page_num,
                         "text": text,
-                        "node_title": f"Page {pd.get('page', idx + 1)}"
+                        "node_title": f"Page {page_num}"
                     })
-        elif document.pages:
-            for pd in document.pages[:3]:
-                text = pd.get("content", "")[:2000]
-                citations.append({
-                    "page": pd.get("page", 0),
-                    "text": text,
-                    "node_title": f"Page {pd.get('page', 0)}"
-                })
-
+            
+            return citations
+        
+        # Fallback: parse [N] markers from answer and try to match pages
+        bracket_citations = re.findall(r'\[(\d+)\]', answer)
+        if not bracket_citations:
+            return citations
+        
+        seen_pages = set()
+        for idx_str in bracket_citations[:5]:
+            try:
+                idx = int(idx_str)
+                if idx in page_map and idx not in seen_pages:
+                    pd = page_map[idx]
+                    text = pd.get("content", "")[:2000]
+                    citations.append({
+                        "page": idx,
+                        "text": text,
+                        "node_title": f"Page {idx}"
+                    })
+                    seen_pages.add(idx)
+            except ValueError:
+                continue
+        
         return citations
 
 
