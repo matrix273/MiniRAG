@@ -926,6 +926,14 @@ const ChatPage = () => {
       const docIds = session.document_ids || [session.document_id]
       setSelectedDoc(docIds[0])
       setSelectedDocs(docIds)
+
+      // 切换会话时重置 PDF 预览状态，使其跟随新会话的文档
+      setPdfPreviewDocId(null)
+      setPdfPage(1)
+      setShowReferencePanel(false)
+      setShowPdfOnly(false)
+      setActiveCitations([])
+      setSelectedCitationIndex(null)
     }
   }
 
