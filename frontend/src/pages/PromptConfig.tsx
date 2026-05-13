@@ -10,8 +10,6 @@ const { TextArea } = Input
 const CATEGORIES = [
   { key: 'agent_system', label: 'Agent System', description: 'Agent 行为和工具使用策略' },
   { key: 'rag_template', label: 'RAG Template', description: 'RAG 问答答案格式要求' },
-  { key: 'indexing', label: 'Indexing', description: '索引构建提示词' },
-  { key: 'post_processing', label: 'Post-Processing', description: '后处理规则' },
 ]
 
 const PromptConfigPage = () => {
