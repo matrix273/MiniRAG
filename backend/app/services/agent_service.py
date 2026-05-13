@@ -4,11 +4,14 @@ import os
 import asyncio
 from typing import Optional
 from openai import AsyncOpenAI
-from agents import Agent, Runner, function_tool, OpenAIChatCompletionsModel
+from agents import Agent, Runner, function_tool, OpenAIChatCompletionsModel, set_tracing_disabled
 
 from app.core.config import get_settings
 
 settings = get_settings()
+
+# Disable agents SDK tracing — it sends data to OpenAI servers, not needed with DashScope
+set_tracing_disabled(True)
 
 # Set up env vars once at module load
 api_key = settings.DASHSCOPE_API_KEY or settings.OPENAI_API_KEY
