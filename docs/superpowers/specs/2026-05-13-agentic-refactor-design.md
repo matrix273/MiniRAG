@@ -109,10 +109,87 @@ ANSWER FORMAT:
 
 Agent 在回答时自动结合文档描述（从 `get_document()` 工具获取）和上述指令。后处理阶段仍然独立运行，执行 LaTeX bracket 转换和引用标记修正。
 
-### 1.6 错误处理与降级
+### 1.6 Agent 运行参数与兜底策略
 
-- Agent 工具调用失败 → 返回错误信息给 Agent，Agent 可尝试其他工具或告知用户
-- Agent SDK 整体异常 → fallback 回现有的结构摘要 + litellm 直接调用路径
+Agent 每轮 tool call 都消耗 token 和时间，需要限制防止失控。这些参数存入数据库，前端可调整。
+
+**参数定义：**
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `max_turns` | Agent 最大 tool call 轮数 | 5 |
+| `max_tokens` | 单次 LLM 回答最大 token 数 | 2048 |
+| `timeout_seconds` | Agent 整体超时（秒） | 60 |
+
+**兜底策略：**
+
+```
+Agent 执行中
+  ├─ 轮数达到 max_turns → 强制停止，返回已获取内容 + 最后一轮的部分回答
+  ├─ 超过 timeout_seconds → 强制停止，同上
+  └─ Agent SDK 异常 → fallback 到结构摘要 + litellm 直接调用路径
+```
+
+**实现方式：**
+
+```python
+async def query_with_guardrails(agent, prompt, params):
+    max_turns = params.get("max_turns", 5)
+    timeout = params.get("timeout_seconds", 60)
+
+    try:
+        result = await asyncio.wait_for(
+            Runner.run(agent, prompt, max_turns=max_turns),
+            timeout=timeout,
+        )
+        return result.final_output, False  # (answer, is_fallback)
+    except asyncio.TimeoutError:
+        # 超时兜底：用结构摘要 + 直接 LLM 调用
+        return await fallback_query(...), True
+    except Exception:
+        return await fallback_query(...), True
+```
+
+`fallback_query` 保留现有的 `_extract_structure_summary()` + `litellm.completion()` 路径作为降级方案。
+
+### 1.7 Agent 运行参数存储
+
+将运行参数存入专用配置表（`system_configs`），与提示词版本管理分开，因为参数没有"版本"概念，只有当前生效值。
+
+```python
+class SystemConfig(Base):
+    __tablename__ = "system_configs"
+
+    key = Column(String, primary_key=True)        # e.g. agent_max_turns
+    value = Column(String, nullable=False)         # 值，字符串存储
+    description = Column(String)                   # 说明
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+```
+
+默认配置行：
+
+| key | value | description |
+|-----|-------|-------------|
+| `agent_max_turns` | `5` | Agent 最大 tool call 轮数 |
+| `agent_max_tokens` | `2048` | 单次 LLM 回答最大 token 数 |
+| `agent_timeout_seconds` | `60` | Agent 整体超时秒数 |
+
+**API：**
+
+```
+GET  /api/system-configs           — 获取所有配置
+PUT  /api/system-configs/{key}     — 更新指定配置
+```
+
+**前端：** 在"系统配置"页面新增"Agent 参数"区域，表单直接编辑这三个值，保存后立即生效（无需重启）。
+
+**缓存：** 与 prompt 缓存共用内存 dict，key 前缀 `config:` 区分。
+
+### 1.8 错误处理与降级（汇总）
+
+- Agent 轮数超限或超时 → 强制停止，返回已获取内容 + 部分回答
+- Agent 工具调用失败 → 返回错误信息给 Agent，Agent 可尝试其他工具
+- Agent SDK 整体异常 → fallback 回结构摘要 + litellm 直接调用
 - 文本后处理（引用标记、LaTeX 转换）保持不变
 
 ---
@@ -234,14 +311,14 @@ Agent 整合结果，生成回答
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
-| `backend/app/models/database.py` | 修改 | 新增 `PromptConfig` 模型 |
-| `backend/alembic/versions/` | 新增 | 数据库迁移脚本 |
-| `backend/app/schemas/schemas.py` | 修改 | 新增 Prompt 相关 schema |
-| `backend/app/services/document_service.py` | 重写 | ChatService 用 Agent 替代 litellm 直接调用 |
+| `backend/app/models/database.py` | 修改 | 新增 `PromptConfig` 和 `SystemConfig` 模型 |
+| `backend/alembic/versions/` | 新增 | 数据库迁移脚本（prompt_configs + system_configs 表） |
+| `backend/app/schemas/schemas.py` | 修改 | 新增 Prompt / SystemConfig 相关 schema |
+| `backend/app/services/document_service.py` | 重写 | ChatService 用 Agent 替代 litellm，含兜底策略 |
 | `backend/app/services/prompt_service.py` | 新增 | 提示词 CRUD + 缓存 |
-| `backend/app/main.py` | 修改 | 新增 `/api/prompts` 路由 |
-| `frontend/src/pages/PromptConfig.tsx` | 新增 | 提示词管理页面 |
-| `frontend/src/services/api.ts` | 修改 | 新增 Prompt API 调用 |
+| `backend/app/main.py` | 修改 | 新增 `/api/prompts` 和 `/api/system-configs` 路由 |
+| `frontend/src/pages/PromptConfig.tsx` | 新增 | 提示词管理 + Agent 参数配置页面 |
+| `frontend/src/services/api.ts` | 修改 | 新增 Prompt / SystemConfig API 调用 |
 | `frontend/src/App.tsx` | 修改 | 新增路由 |
 
 ---
