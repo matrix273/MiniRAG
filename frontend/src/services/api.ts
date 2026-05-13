@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Document, DocumentUploadResponse, TreeNode, ChatSession, ChatMessage, Folder } from '@/types'
+import type { Document, DocumentUploadResponse, TreeNode, ChatSession, ChatMessage, Folder, PromptConfig, SystemConfig } from '@/types'
 
 const API_BASE_URL = '/api'
 
@@ -166,6 +166,50 @@ export const folderApi = {
 export const healthApi = {
   check: async (): Promise<{ status: string; service: string }> => {
     const response = await api.get('/health')
+    return response.data
+  },
+}
+
+// Prompts
+export const promptApi = {
+  listAll: async (): Promise<Record<string, string>> => {
+    const response = await api.get('/prompts')
+    return response.data
+  },
+
+  get: async (category: string): Promise<{ category: string; content: string }> => {
+    const response = await api.get(`/prompts/${category}`)
+    return response.data
+  },
+
+  listVersions: async (category: string): Promise<PromptConfig[]> => {
+    const response = await api.get(`/prompts/${category}/versions`)
+    return response.data
+  },
+
+  create: async (category: string, name: string, content: string, description?: string): Promise<PromptConfig> => {
+    const response = await api.post(`/prompts/${category}`, { name, content, description })
+    return response.data
+  },
+
+  activate: async (category: string, promptId: string): Promise<void> => {
+    await api.put(`/prompts/${category}/active/${promptId}`)
+  },
+
+  delete: async (category: string, promptId: string): Promise<void> => {
+    await api.delete(`/prompts/${category}/versions/${promptId}`)
+  },
+}
+
+// System Configs
+export const systemConfigApi = {
+  list: async (): Promise<SystemConfig[]> => {
+    const response = await api.get('/system-configs')
+    return response.data
+  },
+
+  update: async (key: string, value: string): Promise<SystemConfig> => {
+    const response = await api.put(`/system-configs/${key}`, { value })
     return response.data
   },
 }

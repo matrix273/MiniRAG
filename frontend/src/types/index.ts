@@ -59,3 +59,21 @@ export interface Citation {
   text: string
   node_title?: string
 }
+
+export interface PromptConfig {
+  id: string
+  category: string
+  name: string
+  content: string
+  version: number
+  is_active: boolean
+  description?: string
+  created_at: string
+}
+
+export interface SystemConfig {
+  key: string
+  value: string
+  description?: string
+  updated_at: string
+}

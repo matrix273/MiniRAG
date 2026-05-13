@@ -5,6 +5,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import DocumentList from './pages/DocumentList'
 import DocumentDetail from './pages/DocumentDetail'
 import ChatPage from './pages/ChatPage'
+import PromptConfigPage from './pages/PromptConfig'
 import { healthApi } from '@/services/api'
 
 const { Header, Content } = Layout
@@ -76,7 +77,7 @@ function App() {
             <Route path="/documents" element={<DocumentList />} />
             <Route path="/documents/:id" element={<DocumentDetail />} />
             <Route path="/chat" element={<ChatPage />} />
-            <Route path="/settings" element={<div>Settings (TODO)</div>} />
+            <Route path="/settings" element={<PromptConfigPage />} />
           </Routes>
         </Content>
       </Layout>
