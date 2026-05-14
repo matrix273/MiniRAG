@@ -40,6 +40,14 @@ CRITICAL RULES:
         "content": """ANSWER FORMAT:
 - Use $ ... $ for inline formulas, $$ ... $$ for display formulas.
   Do NOT use [ ... ] or \\( ... \\) for LaTeX.
+- IMPORTANT FORMULA FORMATTING:
+  • Block/display formulas (like equations with numbers): wrap in $$ ... $$ with the formula on its own line, with blank lines before and after:
+    $$
+    \\text{Attention}(Q,K,V) = \\text{softmax}(\\frac{QK^T}{\\sqrt{d_k}})V
+    $$
+  • Inline formulas (like variables or short expressions): wrap in single $ ... $, e.g., $Q$, $d_k$, $\\sqrt{d_k}$
+  • Each display formula MUST be on its own line, surrounded by blank lines.
+  • Do NOT put display formulas ($$ ... $$) on the same line as other text.
 - Cite sources using [1], [2], [3] markers at the end of sentences.
 - When citing, use the page number from the document (e.g., page 5 → [1] if page 5 is your first citation).
 - Only cite pages you actually read with get_page_content().

@@ -264,6 +264,17 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
   const [copied, setCopied] = useState(false)
   const [hovered, setHovered] = useState(false)
 
+  // 预处理 markdown 内容：确保 $$ 块级公式被 remark-math 正确识别为 flow math
+  const preprocessMarkdown = (content: string): string => {
+    let result = content
+    // 将同行的 $$ formula $$ 转为 flow math 格式（$$ 独占一行）
+    // remark-math v6 中，$$ formula $$ 在同一行会被视为 mathText（行内），而非 math（块级）
+    result = result.replace(/\$\$\s*([\s\S]+?)\s*\$\$/g, (_match, formula) => {
+      return `\n\n$$\n${formula.trim()}\n$$\n\n`
+    })
+    return result
+  }
+
   const handleCopy = async () => {
     await navigator.clipboard.writeText(msg.content)
     setCopied(true)
@@ -303,7 +314,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
             justifyContent: 'center',
             flexShrink: 0,
             cursor: 'pointer',
-            opacity: hovered ? 1 : 0,
+            opacity: 1,
             transition: 'opacity 0.2s',
             marginTop: 6,
             order: isUser ? 999 : -1, // AI 消息在左侧，用户消息在右侧
@@ -364,6 +375,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
                 remarkPlugins={[remarkMath]}
                 rehypePlugins={[rehypeKatex]}
                 components={{
+                  pre({ children }) {
+                    // pre 标签直接透传，不做额外处理
+                    return <>{children}</>
+                  },
                   code({ inline, className, children, ...props }: any) {
                     const match = /language-(\w+)/.exec(className || '')
                     const language = match ? match[1] : 'text'
@@ -618,9 +633,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
                       const formulaText = extractAnnotationText(children)
                       
                       return (
-                        <div style={{ position: 'relative', margin: '16px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
-                          <div style={{ flex: 1, textAlign: 'center' }}>
-                            <span {...props}>{children}</span>
+                        <div style={{ position: 'relative', margin: '16px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                          <div style={{ textAlign: 'center' }}>
+                            <span>{children}</span>
                           </div>
                           <FormulaCopyButton formulaText={formulaText} />
                         </div>
@@ -654,7 +669,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
                   },
                 }}
               >
-                {msg.content}
+                {preprocessMarkdown(msg.content)}
               </ReactMarkdown>
             </div>
           )}

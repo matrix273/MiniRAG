@@ -263,6 +263,7 @@ class ChatService:
 
         # Post-processing
         answer = self._cleanup_tool_references(answer)
+        answer = self._remove_latex_equation_labels(answer)
         answer = self._convert_latex_brackets(answer)
         
         # Auto-add citation markers based on accessed pages
@@ -417,6 +418,24 @@ class ChatService:
             traverse([structure])
 
         return "\n".join(summary_lines)
+
+    def _remove_latex_equation_labels(self, answer: str) -> str:
+        r"""Remove LaTeX equation labels like (1), (2.1) etc. at the end of display math blocks.
+
+        These come from PDF page text where the original document has equation numbers
+        at the end of display formulas. They get extracted as part of the text content
+        and confuse KaTeX rendering.
+
+        Example:
+            $$\text{Attention}(Q,K,V) = \text{softmax}(\frac{QK^T}{\sqrt{d_k}})V \tag{1}$$
+            becomes
+            $$\text{Attention}(Q,K,V) = \text{softmax}(\frac{QK^T}{\sqrt{d_k}})V$$
+        """
+        # Remove \tag{N} from inside $$ blocks
+        answer = re.sub(r'(\$\$[\s\S]*?)\\tag\{[^}]+\}(\$\$)', r'\1\2', answer)
+        # Remove standalone \tag{N} that might not be inside $$ yet
+        answer = re.sub(r'\\tag\{[^}]+\}', '', answer)
+        return answer
 
     def _convert_latex_brackets(self, answer):
         """Convert [ ... ] and \\[ ... \\] to $$ ... $$ for KaTeX rendering."""
