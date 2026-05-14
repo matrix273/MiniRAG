@@ -682,9 +682,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
             alignItems: 'center',
             gap: 4,
             marginTop: 4,
-            opacity: hovered ? 1 : 0,
-            transition: 'opacity 0.2s',
-            pointerEvents: hovered ? 'auto' : 'none',
+            opacity: 1,
+            pointerEvents: 'auto',
           }}
         >
           <Tooltip title={copied ? 'Copied!' : 'Copy'}>
