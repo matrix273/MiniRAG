@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { CloseOutlined, SearchOutlined, LoadingOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons'
+import { useState, useEffect } from 'react'
+import { CloseOutlined, LoadingOutlined } from '@ant-design/icons'
 import type { Citation } from '@/types'
 import { documentApi } from '@/services/api'
 import PDFViewer from './PDFViewer'
@@ -19,20 +19,15 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
   onSelectCitation,
   documentId,
 }) => {
-  const [searchText, setSearchText] = useState('')
-  const [pageContent, setPageContent] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [pdfUrl, setPdfUrl] = useState<string>('')
   const [pdfUrlCache, setPdfUrlCache] = useState<Record<string, string>>({})
-  const [searchResults, setSearchResults] = useState<{ text: string; index: number }[]>([])
-  const [currentMatchIndex, setCurrentMatchIndex] = useState(-1)
 
   const selectedCitation = selectedIndex !== null ? citations[selectedIndex] : null
 
   // Fetch original page content when citation is selected
   useEffect(() => {
     if (!selectedCitation) {
-      setPageContent('')
       setPdfUrl('')
       return
     }
@@ -40,7 +35,6 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
     // Use citation's document_id if available, otherwise fall back to prop
     const targetDocId = selectedCitation.document_id || documentId
     if (!targetDocId) {
-      setPageContent('')
       setPdfUrl('')
       return
     }
@@ -49,7 +43,6 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
       setLoading(true)
       try {
         const response = await documentApi.getPageContent(targetDocId, selectedCitation.page)
-        setPageContent(response.content)
 
         // If it's a PDF, get the file URL for preview
         if (response.doc_type === 'pdf') {
@@ -68,7 +61,6 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
         }
       } catch (error) {
         console.error('Failed to fetch page content:', error)
-        setPageContent(selectedCitation.text)
       } finally {
         setLoading(false)
       }
@@ -76,60 +68,6 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
 
     fetchContent()
   }, [selectedCitation, documentId])
-
-  // Reset search when selection changes
-  useEffect(() => {
-    setSearchText('')
-    setSearchResults([])
-    setCurrentMatchIndex(-1)
-  }, [selectedIndex])
-
-  // Search in page content
-  const searchInContent = useCallback((query: string) => {
-    if (!query.trim() || !pageContent) {
-      setSearchResults([])
-      setCurrentMatchIndex(-1)
-      return
-    }
-
-    const results: { text: string; index: number }[] = []
-    const lowerQuery = query.toLowerCase()
-    const lowerContent = pageContent.toLowerCase()
-    let startIndex = 0
-
-    while (startIndex < lowerContent.length) {
-      const index = lowerContent.indexOf(lowerQuery, startIndex)
-      if (index === -1) break
-      results.push({
-        text: pageContent.substring(index, index + query.length),
-        index,
-      })
-      startIndex = index + 1
-    }
-
-    setSearchResults(results)
-    setCurrentMatchIndex(results.length > 0 ? 0 : -1)
-  }, [pageContent])
-
-  // Handle search input change
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
-    setSearchText(value)
-    searchInContent(value)
-  }
-
-  // Navigate search results
-  const goToNextMatch = () => {
-    if (searchResults.length === 0) return
-    const nextIndex = (currentMatchIndex + 1) % searchResults.length
-    setCurrentMatchIndex(nextIndex)
-  }
-
-  const goToPrevMatch = () => {
-    if (searchResults.length === 0) return
-    const prevIndex = (currentMatchIndex - 1 + searchResults.length) % searchResults.length
-    setCurrentMatchIndex(prevIndex)
-  }
 
   if (!citations.length) return null
 
@@ -210,73 +148,6 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
         ))}
       </div>
 
-      {/* Search */}
-      {selectedCitation && (
-        <div style={{ padding: '12px 20px', borderBottom: '1px solid #e5e7eb', flexShrink: 0 }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              background: '#f9fafb',
-              borderRadius: 8,
-              padding: '8px 12px',
-              border: '1px solid #e5e7eb',
-            }}
-          >
-            <SearchOutlined style={{ color: '#9ca3af' }} />
-            <input
-              type="text"
-              value={searchText}
-              onChange={handleSearchChange}
-              placeholder="在当前页面中搜索..."
-              style={{
-                border: 'none',
-                background: 'transparent',
-                outline: 'none',
-                flex: 1,
-                fontSize: 13,
-              }}
-            />
-            {searchText.trim() && searchResults.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ fontSize: 12, color: '#6b7280' }}>
-                  {currentMatchIndex + 1}/{searchResults.length}
-                </span>
-                <button
-                  onClick={goToPrevMatch}
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    cursor: 'pointer',
-                    padding: '2px 4px',
-                    color: '#6b7280',
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                >
-                  <LeftOutlined style={{ fontSize: 10 }} />
-                </button>
-                <button
-                  onClick={goToNextMatch}
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    cursor: 'pointer',
-                    padding: '2px 4px',
-                    color: '#6b7280',
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                >
-                  <RightOutlined style={{ fontSize: 10 }} />
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Content */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {selectedCitation ? (
@@ -305,7 +176,6 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
                     <PDFViewer
                       url={pdfUrl}
                       page={selectedCitation.page}
-                      searchQuery={searchText}
                     />
                   </div>
                 ) : (
