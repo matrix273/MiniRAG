@@ -277,7 +277,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex',
-        flexDirection: isUser ? 'row-reverse' : 'row',
+        flexDirection: 'row',
         justifyContent: isUser ? 'flex-end' : 'flex-start',
         alignItems: 'flex-start',
         gap: 0,
@@ -285,6 +285,37 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
         width: '100%',
       }}
     >
+      {/* Selection checkbox - AI messages: left side (before avatar), User messages: right side */}
+      {onToggleSelect && (
+        <div
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleSelect()
+          }}
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: 4,
+            border: isSelected ? 'none' : '1px solid #d1d5db',
+            background: isSelected ? '#6366f1' : '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            cursor: 'pointer',
+            opacity: hovered ? 1 : 0,
+            transition: 'opacity 0.2s',
+            marginTop: 6,
+            order: isUser ? 999 : -1, // AI 消息在左侧，用户消息在右侧
+            marginRight: isUser ? 8 : 0, // AI 消息 checkbox 最左侧，不设 margin
+          }}
+        >
+          {isSelected && (
+            <CheckOutlined style={{ fontSize: 12, color: '#fff' }} />
+          )}
+        </div>
+      )}
+
       {/* Avatar - only for AI messages */}
       {!isUser && (
         <div
@@ -308,47 +339,16 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
         </div>
       )}
 
-      {/* Selection checkbox - only shown on hover */}
-      {onToggleSelect && (
-        <div
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleSelect()
-          }}
-          style={{
-            width: 20,
-            height: 20,
-            borderRadius: 4,
-            border: isSelected ? 'none' : '1px solid #d1d5db',
-            background: isSelected ? '#6366f1' : '#fff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            cursor: 'pointer',
-            opacity: hovered ? 1 : 0,
-            transition: 'opacity 0.2s',
-            marginRight: isUser ? 0 : 8,
-            marginLeft: isUser ? 8 : 0,
-            marginTop: 6,
-          }}
-        >
-          {isSelected && (
-            <CheckOutlined style={{ fontSize: 12, color: '#fff' }} />
-          )}
-        </div>
-      )}
-
       {/* Content wrapper */}
       <div
         style={{
-          flex: 1,
           minWidth: 0,
-          maxWidth: '100%',
+          maxWidth: isUser ? 'max-content' : '100%',
           position: 'relative',
+          borderRadius: isUser ? 12 : 0,
         }}
       >
-        {/* Message content - no bubble background */}
+        {/* Message content */}
         <div
           style={{
             overflowWrap: 'break-word',
@@ -357,8 +357,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
         >
           {/* Render markdown for assistant, plain text for user */}
           {isUser ? (
-            <div style={{ color: '#343541', lineHeight: 1.6, whiteSpace: 'pre-wrap', fontSize: 16 }}>
-            {msg.content}</div>
+            <div style={{ color: '#343541', lineHeight: 1.6, whiteSpace: 'pre-wrap', fontSize: 16, background: '#f3f4f6', padding: '8px 12px', borderRadius: 12 }}>{msg.content}</div>
           ) : (
             <div className="markdown-body" style={{ color: '#343541', lineHeight: 1.7 }}>
               <ReactMarkdown
@@ -1327,6 +1326,9 @@ const ChatPage = () => {
               style={{
                 padding: '24px 32px',
                 maxWidth: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'stretch',
               }}
             >
               {messages.map((msg) => (
