@@ -262,6 +262,7 @@ class ChatService:
             answer = await self._fallback_query(document, query, agent_prompt)
 
         # Post-processing
+        answer = self._cleanup_tool_references(answer)
         answer = self._convert_latex_brackets(answer)
         
         # Auto-add citation markers based on accessed pages
@@ -337,6 +338,7 @@ class ChatService:
         except Exception as e:
             return f"Error processing question: {str(e)}", []
 
+        answer = self._cleanup_tool_references(answer)
         answer = self._convert_latex_brackets(answer)
 
         # Extract citations from all documents
@@ -360,6 +362,13 @@ class ChatService:
         """Fallback using structure summary + direct litellm call."""
         structure_summary = self._extract_structure_summary(document.structure)
 
+        # Append instruction to prevent tool name leakage
+        fallback_user_msg = (
+            f"Document Structure:\n{structure_summary}\n\nQuestion: {query}\n\n"
+            "IMPORTANT: Answer directly based on the document structure above. "
+            "Do NOT mention tool names or describe your analysis process."
+        )
+
         model = os.environ.get("DEFAULT_MODEL", settings.DEFAULT_MODEL)
         if os.environ.get("DASHSCOPE_API_KEY"):
             os.environ["OPENAI_API_KEY"] = os.environ.get("DASHSCOPE_API_KEY")
@@ -369,12 +378,13 @@ class ChatService:
                 model=model,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Document Structure:\n{structure_summary}\n\nQuestion: {query}"}
+                    {"role": "user", "content": fallback_user_msg}
                 ],
                 temperature=0.7,
                 max_tokens=2000,
             )
-            return response.choices[0].message.content
+            answer = response.choices[0].message.content
+            return self._cleanup_tool_references(answer)
         except Exception as e:
             return f"Error processing question: {str(e)}"
 
@@ -429,17 +439,40 @@ class ChatService:
         answer = re.sub(pattern2, replace_bracket, answer)
         return answer
 
+    def _cleanup_tool_references(self, answer: str) -> str:
+        """Remove tool call references like get_document() from AI response."""
+        # Remove patterns like "Calling get_document()...", "I called get_document()..."
+        answer = re.sub(r"[Cc]alling\s+get_document\(\)[^.]*\.\s*", "", answer)
+        answer = re.sub(r"[Ii]\s+(called|will call|need to call|should call)\s+get_document\(\)[^.]*\.\s*", "", answer)
+
+        # Remove patterns like "I need to get document info first"
+        answer = re.sub(r"I\s+(need to|will|should)\s+(get|check|verify)\s+(the\s+)?document[^.]*\.\s*", "", answer)
+
+        # Remove tool name mentions at start of sentences
+        answer = re.sub(r"^(get_document\(\)|get_document_structure\(\)|get_page_content\()\s*", "", answer, flags=re.MULTILINE)
+
+        # Clean up any leftover "Now let me..." or "Let me..." that followed tool calls
+        answer = re.sub(r"Now\s+let\s+me[^.]*\.\s*", "", answer)
+        answer = re.sub(r"Let\s+me[^.]*\.\s*", "", answer)
+
+        # Clean up double spaces
+        answer = re.sub(r"\s+", " ", answer)
+        answer = re.sub(r"\n\s*\n", "\n\n", answer)
+
+        return answer.strip()
+
     def _add_auto_citations(self, answer: str, accessed_pages: list, document) -> str:
         """Automatically add citation markers at the end of answer.
-        
+
         Removes any existing [N] citations from AI and adds clean citations
         at the end of the answer based on tracked page accesses.
-        
+        If a citation already exists in the body text, it won't be duplicated at the end.
+
         Args:
             answer: The AI's answer text (may contain AI-generated citations)
             accessed_pages: List of page numbers that were accessed via get_page_content
             document: Document object for page data
-        
+
         Returns:
             Answer with [1], [2], etc. citation markers at the end
         """
@@ -448,16 +481,29 @@ class ChatService:
         # Only remove consecutive citations at the very end like "... [1][2][3]"
         answer = re.sub(r'(\s*\[\d+\])+\s*$', '', answer)
         answer = answer.rstrip()
-        
+
         if not accessed_pages:
             return answer
-        
-        # Step 2: Add citation markers at the end of the answer
-        # [1] = first accessed page, [2] = second accessed page, etc.
-        pages_to_cite = accessed_pages[:5]  # Max 5 citations
-        
-        citation_markers = ''.join([f' [{i+1}]' for i in range(len(pages_to_cite))])
-        
+
+        # Step 2: Deduplicate accessed_pages while preserving order
+        seen = set()
+        unique_pages = []
+        for p in accessed_pages:
+            if p not in seen:
+                seen.add(p)
+                unique_pages.append(p)
+
+        # Step 3: Filter out pages that are already cited in the body text
+        body_citations = set(int(x) for x in re.findall(r'\[(\d+)\]', answer))
+        pages_to_cite = [p for p in unique_pages[:5] if p not in body_citations]
+
+        if not pages_to_cite:
+            return answer
+
+        # Step 4: Add citation markers at the end
+        start_idx = len(body_citations) + 1
+        citation_markers = ''.join([f' [{start_idx + i}]' for i in range(len(pages_to_cite))])
+
         return answer + citation_markers
 
     def _extract_citations(self, document, answer="", accessed_pages=None):

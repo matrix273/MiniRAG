@@ -262,6 +262,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
   const { message } = App.useApp()
   const isUser = msg.role === 'user'
   const [copied, setCopied] = useState(false)
+  const [hovered, setHovered] = useState(false)
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(msg.content)
@@ -272,37 +273,42 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
 
   return (
     <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex',
         flexDirection: isUser ? 'row-reverse' : 'row',
         justifyContent: isUser ? 'flex-end' : 'flex-start',
         alignItems: 'flex-start',
-        gap: isUser ? 8 : 12,
+        gap: 0,
         position: 'relative',
+        width: '100%',
       }}
     >
-      {/* Avatar */}
-      <div
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
-          background: isUser 
-            ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' 
-            : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-          fontSize: 14,
-          color: '#fff',
-          fontWeight: 600,
-        }}
-      >
-        {isUser ? 'U' : 'AI'}
-      </div>
+      {/* Avatar - only for AI messages */}
+      {!isUser && (
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: '50%',
+            background: '#e5e7eb',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            fontSize: 14,
+            color: '#374151',
+            fontWeight: 600,
+            marginRight: 16,
+            marginTop: 2,
+          }}
+        >
+          A
+        </div>
+      )}
 
-      {/* Selection checkbox - 放在 Avatar 和内容之间 */}
+      {/* Selection checkbox - only shown on hover */}
       {onToggleSelect && (
         <div
           onClick={(e) => {
@@ -320,6 +326,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
             justifyContent: 'center',
             flexShrink: 0,
             cursor: 'pointer',
+            opacity: hovered ? 1 : 0,
+            transition: 'opacity 0.2s',
+            marginRight: isUser ? 0 : 8,
+            marginLeft: isUser ? 8 : 0,
+            marginTop: 6,
           }}
         >
           {isSelected && (
@@ -328,33 +339,28 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
         </div>
       )}
 
-      {/* Content */}
+      {/* Content wrapper */}
       <div
         style={{
-          flex: isUser ? '1 1 auto' : 1,
-          maxWidth: isUser ? 'calc(100% - 80px)' : '100%',
+          flex: 1,
           minWidth: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: isUser ? 'flex-end' : 'flex-start',
+          maxWidth: '100%',
+          position: 'relative',
         }}
       >
-        {/* Message bubble */}
+        {/* Message content - no bubble background */}
         <div
           style={{
-            background: isUser ? '#f3f4f6' : '#f9fafb',
-            padding: '12px 16px',
-            borderRadius: 12,
-            borderTopRightRadius: isUser ? 4 : 12,
-            borderTopLeftRadius: isUser ? 12 : 4,
-            maxWidth: '100%',
+            overflowWrap: 'break-word',
+            wordBreak: 'break-word',
           }}
         >
           {/* Render markdown for assistant, plain text for user */}
           {isUser ? (
-            <div style={{ color: '#1f2937', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'keep-all' }}>{msg.content}</div>
+            <div style={{ color: '#343541', lineHeight: 1.6, whiteSpace: 'pre-wrap', fontSize: 16 }}>
+            {msg.content}</div>
           ) : (
-            <div className="markdown-body" style={{ color: '#1f2937', lineHeight: 1.7 }}>
+            <div className="markdown-body" style={{ color: '#343541', lineHeight: 1.7 }}>
               <ReactMarkdown
                 remarkPlugins={[remarkMath]}
                 rehypePlugins={[rehypeKatex]}
@@ -655,14 +661,16 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
           )}
         </div>
 
-        {/* Message actions bar - Deepseek style */}
+        {/* Action buttons - show on hover */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
-            marginTop: 8,
-            padding: '0 4px',
+            gap: 4,
+            marginTop: 4,
+            opacity: hovered ? 1 : 0,
+            transition: 'opacity 0.2s',
+            pointerEvents: hovered ? 'auto' : 'none',
           }}
         >
           <Tooltip title={copied ? 'Copied!' : 'Copy'}>
@@ -694,8 +702,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
               <span>{copied ? 'Copied' : 'Copy'}</span>
             </button>
           </Tooltip>
-
-          {/* Citations - Hidden, only accessible via clicking in message content */}
         </div>
       </div>
     </div>
@@ -1317,23 +1323,18 @@ const ChatPage = () => {
               </div>
             </div>
           ) : (
-            <div 
-              style={{ 
-                maxWidth: 900, 
-                margin: '0 auto',
+            <div
+              style={{
                 padding: '24px 32px',
+                maxWidth: '100%',
               }}
             >
               {messages.map((msg) => (
-                <div 
-                  key={msg.id} 
-                  style={{ 
+                <div
+                  key={msg.id}
+                  style={{
                     marginBottom: 24,
                     animation: 'fadeIn 0.3s ease-out',
-                    display: 'flex',
-                    justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                    marginLeft: msg.role === 'user' ? 'auto' : 0,
-                    marginRight: msg.role === 'user' ? 0 : 'auto',
                   }}
                 >
                   <MessageBubble msg={msg} onCitationClick={handleCitationClick} isSelected={selectedMessages.has(msg.id)} onToggleSelect={() => toggleMessageSelection(msg.id)} />

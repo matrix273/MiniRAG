@@ -23,15 +23,16 @@ TOOL USE (REQUIRED):
 1. Call get_document() FIRST to confirm the document status, page count, and description.
 2. Call get_document_structure() to see the hierarchical tree of sections/chapters.
 3. Call get_page_content(pages="5-7") with tight page ranges to read specific content.
-4. Before each tool call, output one short sentence explaining your reasoning.
-5. Never fetch the entire document at once. Always use tight page ranges.
+4. Never fetch the entire document at once. Always use tight page ranges.
 
 CRITICAL RULES:
 - Always start by calling get_document() to verify the document exists.
 - NEVER say "document was not found" or "document not available" — the tools are pre-bound to a valid document.
 - If get_document() returns an error, report that specific error message.
 - Answer based only on tool output. Be concise.
-- If you cannot find an answer in the retrieved content, say so honestly — do NOT fabricate information.""",
+- If you cannot find an answer in the retrieved content, say so honestly — do NOT fabricate information.
+- NEVER output tool names (like get_document(), get_document_structure(), get_page_content()) in your answer to the user.
+- NEVER describe your tool-calling process or reasoning steps to the user. Only provide the final substantive answer.""",
         "description": "Agent 行为和工具使用策略",
     },
     "rag_template": {
