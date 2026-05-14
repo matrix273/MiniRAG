@@ -265,11 +265,7 @@ class ChatService:
         answer = self._cleanup_tool_references(answer)
         answer = self._remove_latex_equation_labels(answer)
         answer = self._convert_latex_brackets(answer)
-        
-        # Auto-add citation markers based on accessed pages
-        if accessed_pages:
-            answer = self._add_auto_citations(answer, accessed_pages, document)
-        
+         
         citations = self._extract_citations(document, answer, accessed_pages)
 
         return answer, citations
@@ -480,50 +476,6 @@ class ChatService:
 
         return answer.strip()
 
-    def _add_auto_citations(self, answer: str, accessed_pages: list, document) -> str:
-        """Automatically add citation markers at the end of answer.
-
-        Removes any existing [N] citations from AI and adds clean citations
-        at the end of the answer based on tracked page accesses.
-        If a citation already exists in the body text, it won't be duplicated at the end.
-
-        Args:
-            answer: The AI's answer text (may contain AI-generated citations)
-            accessed_pages: List of page numbers that were accessed via get_page_content
-            document: Document object for page data
-
-        Returns:
-            Answer with [1], [2], etc. citation markers at the end
-        """
-        # Step 1: Remove existing citation markers at the END of the answer only
-        # This preserves [N] within the text (e.g., "[3] 第3章", "[500V]", "[100%]")
-        # Only remove consecutive citations at the very end like "... [1][2][3]"
-        answer = re.sub(r'(\s*\[\d+\])+\s*$', '', answer)
-        answer = answer.rstrip()
-
-        if not accessed_pages:
-            return answer
-
-        # Step 2: Deduplicate accessed_pages while preserving order
-        seen = set()
-        unique_pages = []
-        for p in accessed_pages:
-            if p not in seen:
-                seen.add(p)
-                unique_pages.append(p)
-
-        # Step 3: Filter out pages that are already cited in the body text
-        body_citations = set(int(x) for x in re.findall(r'\[(\d+)\]', answer))
-        pages_to_cite = [p for p in unique_pages[:5] if p not in body_citations]
-
-        if not pages_to_cite:
-            return answer
-
-        # Step 4: Add citation markers at the end
-        start_idx = len(body_citations) + 1
-        citation_markers = ''.join([f' [{start_idx + i}]' for i in range(len(pages_to_cite))])
-
-        return answer + citation_markers
 
     def _extract_citations(self, document, answer="", accessed_pages=None):
         """Extract citation information from accessed pages.
