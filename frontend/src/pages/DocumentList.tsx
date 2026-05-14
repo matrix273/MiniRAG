@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Card, Table, Button, Upload, message, Tag, Space, Typography, App, Tooltip, Layout, Tree, Input, Modal, Dropdown, Select, List } from 'antd'
+import { Card, Table, Button, Upload, Tag, Space, Typography, App, Tooltip, Layout, Tree, Input, Modal, Dropdown, Select, List } from 'antd'
 import type { UploadFile } from 'antd/es/upload/interface'
 import type { DataNode } from 'antd/es/tree'
 import {
@@ -48,7 +48,7 @@ function buildFolderSelectItems(folders: Folder[], prefix = ''): { label: string
 }
 
 const DocumentList = () => {
-  const { modal } = App.useApp()
+  const { modal, message } = App.useApp()
   const [documents, setDocuments] = useState<Document[]>([])
   const [folders, setFolders] = useState<Folder[]>([])
   const [loading, setLoading] = useState(false)
@@ -65,8 +65,6 @@ const DocumentList = () => {
   const [uploadFolderId, setUploadFolderId] = useState<string | null>(null)
 
   const prevStatusesRef = useRef<Record<string, string>>({})
-  const uploadedFilesRef = useRef<Set<string>>(new Set())
-  const uploadingFilesRef = useRef<Set<string>>(new Set())
 
   const fetchFolders = async () => {
     try {
@@ -125,36 +123,25 @@ const DocumentList = () => {
   }, [documents])
 
   const handleUpload = async (fileList: UploadFile[]) => {
+    console.log('handleUpload called with:', fileList.map(f => ({ name: f.name, originFileObj: f.originFileObj })))
     if (fileList.length === 0) return
 
     const newFiles = fileList
       .filter(f => f.originFileObj)
-      .filter(f => {
-        const key = getFileKey(f.originFileObj!)
-        if (uploadedFilesRef.current.has(key) || uploadingFilesRef.current.has(key)) {
-          return false
-        }
-        return true
-      })
-      .map(f => f.originFileObj!)
+      .map(f => f.originFileObj as File)
 
+    console.log('filtered files:', newFiles.map(f => f.name))
     if (newFiles.length === 0) {
-      message.info('All files already uploaded')
+      message.info('No valid files to upload')
       return
     }
 
-    newFiles.forEach(f => uploadingFilesRef.current.add(getFileKey(f)))
-
     setUploading(true)
     try {
-      const result = await documentApi.uploadMultiple(newFiles, uploadFolderId ?? undefined)
+      const result = await documentApi.uploadMultiple(newFiles, uploadFolderId || undefined)
 
       if (result.total_uploaded > 0) {
         message.success(`Uploaded ${result.total_uploaded} document(s)`)
-        newFiles.forEach(f => {
-          uploadedFilesRef.current.add(getFileKey(f))
-          uploadingFilesRef.current.delete(getFileKey(f))
-        })
       }
       if (result.errors && result.errors.length > 0) {
         result.errors.forEach((err: string) => message.warning(err))
@@ -163,7 +150,6 @@ const DocumentList = () => {
       fetchDocuments()
     } catch {
       message.error('Failed to upload documents')
-      newFiles.forEach(f => uploadingFilesRef.current.delete(getFileKey(f)))
     } finally {
       setUploading(false)
     }
@@ -647,7 +633,7 @@ const DocumentList = () => {
                 allowClear
                 placeholder="Root Directory"
                 options={[
-                  { value: null, label: 'Root Directory' },
+                  { value: '', label: 'Root Directory' },
                   ...folderSelectItems.map(item => ({
                     value: item.value,
                     label: item.label,
@@ -659,7 +645,8 @@ const DocumentList = () => {
               accept=".pdf,.md,.markdown"
               showUploadList={false}
               beforeUpload={(file) => {
-                setPendingFiles(prev => [...prev, file as unknown as UploadFile])
+                const uploadFile = { uid: file.uid, name: file.name, originFileObj: file } as UploadFile
+                setPendingFiles(prev => [...prev, uploadFile])
                 return false
               }}
               multiple
