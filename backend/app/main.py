@@ -504,6 +504,9 @@ async def send_message(
     """Send a message and get AI response using PageIndex reasoning-based retrieval."""
     from sqlalchemy import select
 
+    # 获取查询模式
+    query_mode = message_data.mode if hasattr(message_data, 'mode') else 'fast'
+
     # Get session
     result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
     session = result.scalar_one_or_none()
@@ -549,11 +552,18 @@ async def send_message(
     try:
         if len(documents) == 1:
             # Single document query
-            answer, citations = await chat_service.query_document(
-                document=documents[0],
-                query=message_data.content,
-                chat_history=chat_history,
-            )
+            if query_mode == "fast":
+                answer, citations = await chat_service.query_document_fast(
+                    document=documents[0],
+                    query=message_data.content,
+                    chat_history=chat_history,
+                )
+            else:
+                answer, citations = await chat_service.query_document(
+                    document=documents[0],
+                    query=message_data.content,
+                    chat_history=chat_history,
+                )
         else:
             # Multi-document query
             answer, citations = await chat_service.query_documents(
