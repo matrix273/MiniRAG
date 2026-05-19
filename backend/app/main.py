@@ -59,9 +59,12 @@ app.add_middleware(
 # Use the global instance from document_service module
 from app.services.document_service import doc_service
 from app.api.auth import router as auth_router
+from app.api.admin import router as admin_router
 
 # Include auth router
 app.include_router(auth_router)
+# Include admin router
+app.include_router(admin_router)
 
 
 @app.on_event("startup")
