@@ -3,7 +3,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user import User, Role, Permission, UserRole, RolePermission
+from app.models.user import User, Role, Permission, UserRole, RolePermission, RefreshToken
 from app.core.security import (
     hash_password,
     verify_password,

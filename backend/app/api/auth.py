@@ -29,15 +29,21 @@ async def register(
     db: AsyncSession = Depends(get_db),
 ) -> UserResponse:
     """Register a new user."""
+    from sqlalchemy import select
     user = await register_user(db, request.email, request.username, request.password)
+
+    # Eagerly load roles and permissions
+    result = await db.execute(
+        select(User).where(User.id == user.id)
+    )
+    user = result.scalar_one()
+    await db.refresh(user, ["roles"])
+    for role in user.roles:
+        await db.refresh(role, ["permissions"])
 
     # Get roles and permissions
     roles = [role.name for role in user.roles]
-    permissions = []
-    for role in user.roles:
-        for perm in role.permissions:
-            permissions.append(perm.name)
-    permissions = list(set(permissions))
+    permissions = list({perm.name for role in user.roles for perm in role.permissions})
 
     return UserResponse(
         id=user.id,
