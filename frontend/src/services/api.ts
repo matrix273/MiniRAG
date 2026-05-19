@@ -155,8 +155,8 @@ export const chatApi = {
   },
   
   // Send message
-  sendMessage: async (sessionId: string, content: string): Promise<ChatMessage> => {
-    const response = await api.post(`/chat/${sessionId}/message`, { content })
+  sendMessage: async (sessionId: string, content: string, mode: "fast" | "deep" = "fast"): Promise<ChatMessage> => {
+    const response = await api.post(`/chat/${sessionId}/message`, { content, mode })
     return response.data
   },
   
