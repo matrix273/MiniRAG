@@ -419,7 +419,7 @@ class ChatService:
 
         # 阶段 4: 生成引用
         citations = self._generate_citations_fast(
-            doc_structure=doc_structure,
+            tree=doc_structure,
             node_ids=relevant_node_ids,
             doc_id=document.id,
         )
