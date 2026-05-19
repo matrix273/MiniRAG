@@ -14,6 +14,8 @@ import {
   RightOutlined,
   MenuOutlined,
   CloseOutlined,
+  ThunderboltOutlined,
+  SettingOutlined,
 } from '@ant-design/icons'
 import { chatApi, documentApi, folderApi } from '@/services/api'
 import type { ChatSession, Document, Folder } from '@/types'
@@ -737,6 +739,9 @@ const ChatPage = () => {
   const [showReferencePanel, setShowReferencePanel] = useState(false)
   const [activeCitations, setActiveCitations] = useState<Array<{ page: number; text: string; node_title?: string }>>([])
   const [selectedCitationIndex, setSelectedCitationIndex] = useState<number | null>(null)
+  const [mode, setMode] = useState<"fast" | "deep">(
+    () => (localStorage.getItem("chatMode") as "fast" | "deep") || "fast"
+  );
   // PDF 面板状态 - 用于无引用时显示 PDF
   const [showPdfOnly, setShowPdfOnly] = useState(false)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -903,7 +908,7 @@ const ChatPage = () => {
     const isFirstMessage = messages.length === 0
 
     try {
-      const response = await chatApi.sendMessage(currentSession, inputMessage)
+      const response = await chatApi.sendMessage(currentSession, inputMessage, mode)
       setMessages(prev => [...prev, response as Message])
       
       // 自动重命名会话（类似 ChatGPT）
@@ -1545,9 +1550,33 @@ const ChatPage = () => {
           }}
         >
           <div style={{ maxWidth: 900, margin: '0 auto' }}>
-            <div 
-              style={{ 
-                display: 'flex', 
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8, justifyContent: 'center' }}>
+              <Button
+                type={mode === "fast" ? "primary" : "default"}
+                icon={<ThunderboltOutlined />}
+                onClick={() => {
+                  setMode("fast");
+                  localStorage.setItem("chatMode", "fast");
+                }}
+                size="small"
+              >
+                快速
+              </Button>
+              <Button
+                type={mode === "deep" ? "primary" : "default"}
+                icon={<SettingOutlined />}
+                onClick={() => {
+                  setMode("deep");
+                  localStorage.setItem("chatMode", "deep");
+                }}
+                size="small"
+              >
+                深度
+              </Button>
+            </div>
+            <div
+              style={{
+                display: 'flex',
                 gap: 12,
                 background: '#f9fafb',
                 borderRadius: 12,
