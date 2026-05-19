@@ -385,6 +385,204 @@ class ChatService:
         except Exception as e:
             return f"Error processing question: {str(e)}"
 
+    async def query_document_fast(
+        self,
+        document: Document,
+        query: str,
+        chat_history: list = None,
+    ) -> tuple[str, list]:
+        """
+        使用简单 RAG（无 Agent）查询文档。
+
+        流程：树搜索 -> 内容提取 -> 回答生成 -> 引用生成
+        """
+        import json
+        from pageindex.utils import remove_fields, create_node_mapping
+
+        doc_structure = document.structure
+        if not doc_structure:
+            return "Document structure not available. Please reindex the document.", []
+
+        # 阶段 1: 树结构搜索
+        relevant_node_ids = await self._tree_search_fast(query, doc_structure)
+
+        # 阶段 2: 内容提取
+        context = self._extract_node_content_fast(doc_structure, relevant_node_ids)
+
+        # 阶段 3: 生成回答
+        answer = await self._generate_answer_fast(
+            query=query,
+            context=context,
+            document=document,
+            chat_history=chat_history,
+        )
+
+        # 阶段 4: 生成引用
+        citations = self._generate_citations_fast(
+            doc_structure=doc_structure,
+            node_ids=relevant_node_ids,
+            doc_id=document.id,
+        )
+
+        return answer, citations
+
+
+    async def _tree_search_fast(self, query: str, tree) -> list:
+        """使用 LLM 在树结构中搜索相关节点"""
+        import json
+        from litellm import acompletion
+        from pageindex.utils import remove_fields
+
+        # 移除 text 字段，仅保留 title 和 summary
+        tree_without_text = remove_fields(
+            tree if isinstance(tree, list) else [tree],
+            fields=['text']
+        )
+
+        # 构造搜索提示词
+        search_prompt = f"""You are given a question and a tree structure of a document.
+Each node contains a node id, node title, and a corresponding summary.
+Your task is to find all nodes that are likely to contain the answer to the question.
+
+Question: {query}
+
+Document tree structure:
+{json.dumps(tree_without_text, indent=2)}
+
+Please reply in the following JSON format:
+{{
+    "thinking": "<Your thinking process on which nodes are relevant to the question>",
+    "node_list": ["node_id_1", "node_id_2", ...]
+}}
+Directly return the final JSON structure. Do not output anything else."""
+
+        model = os.environ.get("DEFAULT_MODEL", settings.DEFAULT_MODEL)
+        if os.environ.get("DASHSCOPE_API_KEY"):
+            os.environ["OPENAI_API_KEY"] = os.environ.get("DASHSCOPE_API_KEY")
+
+        response = await acompletion(
+            model=model,
+            messages=[{"role": "user", "content": search_prompt}],
+            temperature=0,
+        )
+
+        result = json.loads(response.choices[0].message.content)
+        return result.get("node_list", [])
+
+
+    def _extract_node_content_fast(self, tree, node_ids: list) -> str:
+        """从相关节点提取全文内容"""
+        from pageindex.utils import create_node_mapping
+
+        if isinstance(tree, list):
+            all_nodes = tree
+        else:
+            all_nodes = [tree]
+
+        node_map = create_node_mapping(all_nodes)
+
+        content_parts = []
+        for node_id in node_ids:
+            if node_id in node_map:
+                node = node_map[node_id]
+                text = node.get("text", "")
+                if text:
+                    content_parts.append(text)
+
+        return "\n\n".join(content_parts)
+
+
+    async def _generate_answer_fast(
+        self,
+        query: str,
+        context: str,
+        document: Document,
+        chat_history: list = None,
+    ) -> str:
+        """基于上下文生成回答"""
+        from litellm import acompletion
+
+        # 获取系统提示词
+        agent_prompt = await get_active_prompt("agent_system")
+        rag_template = await get_active_prompt("rag_template")
+        if rag_template:
+            agent_prompt = f"{agent_prompt}\n\n{rag_template}"
+
+        # 添加文档上下文
+        agent_prompt += f"\n\nDocument: {document.original_name}"
+        if document.doc_description:
+            agent_prompt += f"\nDescription: {document.doc_description}"
+        if document.page_count:
+            agent_prompt += f"\nPages: {document.page_count}"
+
+        # 添加聊天历史
+        if chat_history:
+            history_text = "\n".join(
+                f"{msg.get('role', 'user')}: {msg.get('content', '')}"
+                for msg in chat_history[-5:]
+            )
+            agent_prompt += f"\n\nChat history:\n{history_text}"
+
+        # 构造用户消息
+        user_message = f"""Answer the question based on the context:
+
+Question: {query}
+
+Context:
+{context}
+
+Provide a clear, concise answer based only on the context provided."""
+
+        model = os.environ.get("DEFAULT_MODEL", settings.DEFAULT_MODEL)
+        if os.environ.get("DASHSCOPE_API_KEY"):
+            os.environ["OPENAI_API_KEY"] = os.environ.get("DASHSCOPE_API_KEY")
+
+        response = await acompletion(
+            model=model,
+            messages=[
+                {"role": "system", "content": agent_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=0.7,
+            max_tokens=2000,
+        )
+
+        answer = response.choices[0].message.content
+        answer = self._cleanup_tool_references(answer)
+        answer = self._convert_latex_brackets(answer)
+
+        return answer
+
+
+    def _generate_citations_fast(
+        self,
+        tree,
+        node_ids: list,
+        doc_id: str,
+    ) -> list:
+        """从节点 ID 生成引用"""
+        from pageindex.utils import create_node_mapping
+
+        if isinstance(tree, list):
+            all_nodes = tree
+        else:
+            all_nodes = [tree]
+
+        node_map = create_node_mapping(all_nodes)
+        citations = []
+
+        for node_id in node_ids:
+            if node_id in node_map:
+                node = node_map[node_id]
+                citations.append({
+                    "page": node.get("page_index", 0),
+                    "text": node.get("text", "")[:2000],
+                    "node_title": node.get("title", ""),
+                    "document_id": doc_id,
+                })
+
+        return citations[:5]  # 限制最多 5 条引用
+
     def _extract_structure_summary(self, structure, max_depth=2):
         """Extract a readable summary from document structure."""
         if not structure:
