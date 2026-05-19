@@ -20,7 +20,7 @@ elif settings.OPENAI_API_KEY:
     if settings.OPENAI_BASE_URL:
         os.environ["OPENAI_BASE_URL"] = settings.OPENAI_BASE_URL
 
-from app.models.database import get_db, Document, ChatSession, ChatMessage, Folder, init_db
+from app.models.database import get_db, Document, ChatSession, ChatMessage, Folder, init_db, async_session
 from app.services.document_service import doc_service, chat_service
 from app.schemas.schemas import (
     DocumentResponse,
@@ -58,6 +58,10 @@ app.add_middleware(
 # Document service
 # Use the global instance from document_service module
 from app.services.document_service import doc_service
+from app.api.auth import router as auth_router
+
+# Include auth router
+app.include_router(auth_router)
 
 
 @app.on_event("startup")
@@ -71,6 +75,10 @@ async def startup():
     # Initialize default prompts in DB
     from app.services.prompt_service import init_default_prompts
     await init_default_prompts()
+    # Seed roles and permissions
+    from app.services.auth_service import seed_roles_and_permissions
+    async with async_session() as seed_db:
+        await seed_roles_and_permissions(seed_db)
 
 
 # ========== Document Endpoints ==========

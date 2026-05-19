@@ -29,6 +29,9 @@ engine = create_async_engine(
 logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
 logging.getLogger('sqlalchemy.pool').setLevel(logging.WARNING)
 
+# Session factory for database operations
+async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
 
 class Document(Base):
     """Document model for storing uploaded documents."""
