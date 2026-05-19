@@ -11,12 +11,14 @@ from app.schemas.auth import (
     TokenResponse,
     RefreshRequest,
     UserResponse,
+    ChangePasswordRequest,
 )
 from app.services.auth_service import (
     register_user,
     authenticate_user,
     refresh_tokens,
     logout_user,
+    change_password,
 )
 
 
@@ -119,3 +121,14 @@ async def get_me(
         roles=roles,
         permissions=permissions,
     )
+
+
+@router.post("/change-password")
+async def change_password_endpoint(
+    request: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Change current user password."""
+    await change_password(db, user.id, request.old_password, request.new_password)
+    return {"message": "Password changed successfully"}

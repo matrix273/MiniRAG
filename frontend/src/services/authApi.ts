@@ -25,6 +25,10 @@ export const authApi = {
     const response = await api.get('/auth/me')
     return response.data
   },
+
+  changePassword: async (oldPassword: string, newPassword: string): Promise<void> => {
+    await api.post('/auth/change-password', { old_password: oldPassword, new_password: newPassword })
+  },
 }
 
 export const adminApi = {
@@ -35,6 +39,11 @@ export const adminApi = {
 
   createRole: async (name: string, description?: string): Promise<Role> => {
     const response = await api.post('/admin/roles', { name, description })
+    return response.data
+  },
+
+  updateRole: async (roleId: string, name: string, description?: string): Promise<Role> => {
+    const response = await api.put(`/admin/roles/${roleId}`, { name, description })
     return response.data
   },
 

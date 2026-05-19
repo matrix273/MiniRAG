@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { Layout, Menu, Typography, App as AntApp, Dropdown, Space, Avatar } from 'antd'
+import { useEffect, useState } from 'react'
+import { Layout, Menu, Typography, App as AntApp, Dropdown, Space, Avatar, Modal, Form, Input, message } from 'antd'
 import { FileTextOutlined, MessageOutlined, SettingOutlined, UserOutlined, LogoutOutlined, CrownOutlined } from '@ant-design/icons'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import { AuthProvider } from '@/contexts/AuthContext'
@@ -14,6 +14,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import AdminPage from './pages/AdminPage'
 import { healthApi } from '@/services/api'
+import { authApi } from '@/services/authApi'
 
 const { Header, Content } = Layout
 const { Title } = Typography
@@ -21,15 +22,17 @@ const { Title } = Typography
 function AppContent() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { message } = AntApp.useApp()
+  const { message: antMessage } = AntApp.useApp()
   const { user, logout } = useAuth()
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false)
+  const [passwordForm] = Form.useForm()
   const isPublicPage = ['/', '/login', '/register'].includes(location.pathname)
 
   useEffect(() => {
     healthApi.check()
       .then(() => console.log('Backend connected'))
-      .catch(() => message.error('Backend not available'))
-  }, [message])
+      .catch(() => antMessage.error('Backend not available'))
+  }, [antMessage])
 
   const menuItems = [
     { key: '/chat', icon: <MessageOutlined />, label: 'Chat' },
@@ -43,6 +46,7 @@ function AppContent() {
 
   const userMenuItems = [
     ...(user?.roles?.includes('admin') ? [{ key: '/admin', icon: <CrownOutlined />, label: '管理后台' }] : []),
+    { key: 'change-password', icon: <UserOutlined />, label: '修改密码' },
     { key: 'logout', icon: <LogoutOutlined />, label: '登出' },
   ]
 
@@ -52,6 +56,25 @@ function AppContent() {
       navigate('/login')
     } else if (key === '/admin') {
       navigate(key)
+    } else if (key === 'change-password') {
+      setPasswordModalOpen(true)
+    }
+  }
+
+  const handlePasswordSubmit = async () => {
+    try {
+      const values = await passwordForm.validateFields()
+      await authApi.changePassword(values.old_password, values.new_password)
+      antMessage.success('密码修改成功')
+      setPasswordModalOpen(false)
+      passwordForm.resetFields()
+    } catch (e: unknown) {
+      if (e && typeof e === 'object' && 'response' in e) {
+        const err = e as { response?: { data?: { detail?: string } } }
+        antMessage.error(err.response?.data?.detail || '修改失败')
+      } else {
+        antMessage.error('修改失败')
+      }
     }
   }
 
@@ -101,6 +124,34 @@ function AppContent() {
           <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><AdminPage /></ProtectedRoute>} />
         </Routes>
       </Content>
+
+      <Modal
+        title="修改密码"
+        open={passwordModalOpen}
+        onOk={handlePasswordSubmit}
+        onCancel={() => { setPasswordModalOpen(false); passwordForm.resetFields() }}
+        okText="确认"
+        cancelText="取消"
+      >
+        <Form form={passwordForm} layout="vertical">
+          <Form.Item name="old_password" label="当前密码" rules={[{ required: true, message: '请输入当前密码' }]}>
+            <Input.Password placeholder="当前密码" />
+          </Form.Item>
+          <Form.Item name="new_password" label="新密码" rules={[{ required: true, message: '请输入新密码' }, { min: 6, message: '密码至少6位' }]}>
+            <Input.Password placeholder="新密码" />
+          </Form.Item>
+          <Form.Item name="confirm_password" label="确认新密码" dependencies={['new_password']} rules={[{ required: true, message: '请确认新密码' }, ({ getFieldValue }) => ({
+            validator(_, value) {
+              if (!value || getFieldValue('new_password') === value) {
+                return Promise.resolve()
+              }
+              return Promise.reject(new Error('两次输入的密码不一致'))
+            },
+          })]}>
+            <Input.Password placeholder="确认新密码" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Layout>
   )
 }

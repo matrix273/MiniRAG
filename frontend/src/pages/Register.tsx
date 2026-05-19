@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Form, Input, Button, Card, Typography, message, Space } from 'antd'
-import { MailOutlined, UserOutlined, LockOutlined } from '@ant-design/icons'
+import { MailOutlined, UserOutlined, LockOutlined, ArrowLeftOutlined } from '@ant-design/icons'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -32,6 +32,9 @@ export default function Register() {
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f0f2f5' }}>
         <Card style={{ width: 400 }}>
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/')}>返回首页</Button>
+            </div>
             <div style={{ textAlign: 'center' }}>
               <Title level={3} style={{ margin: 0 }}>PageIndex</Title>
               <Text type="secondary">创建新账号</Text>

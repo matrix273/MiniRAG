@@ -249,3 +249,24 @@ async def logout_user(db: AsyncSession, user_id: str) -> None:
     """Logout user by revoking all refresh tokens."""
     await revoke_all_user_tokens(db, user_id)
     await db.commit()
+
+
+async def change_password(db: AsyncSession, user_id: str, old_password: str, new_password: str) -> None:
+    """Change user password. Requires old password verification."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    if not verify_password(old_password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid old password",
+        )
+
+    user.hashed_password = hash_password(new_password)
+    await db.commit()

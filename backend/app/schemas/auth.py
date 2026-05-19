@@ -40,3 +40,9 @@ class UserResponse(BaseModel):
     permissions: List[str] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ChangePasswordRequest(BaseModel):
+    """Change password request."""
+    old_password: str
+    new_password: str
