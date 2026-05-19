@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+    JWT_SECRET_KEY: str = "your-jwt-secret-change-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES_JWT: int = 15  # 15 minutes
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 7 days
     
     # File Upload
     UPLOAD_DIR: str = "./uploads"
