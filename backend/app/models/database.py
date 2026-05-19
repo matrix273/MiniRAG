@@ -4,9 +4,14 @@ from typing import List, Optional, Dict, Any
 
 from sqlalchemy import String, DateTime, Text, JSON, Integer, ForeignKey, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, sessionmaker
 from sqlalchemy.sql import func
 import logging
+
+from app.models.base import Base
+
+# Import auth models so Base.metadata.create_all picks them up
+from app.models.user import User, Role, Permission, UserRole, RolePermission, RefreshToken  # noqa: F401
 
 from app.core.config import get_settings
 
@@ -23,11 +28,6 @@ engine = create_async_engine(
 # Set SQLAlchemy log level to WARNING to reduce noise
 logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
 logging.getLogger('sqlalchemy.pool').setLevel(logging.WARNING)
-
-
-class Base(DeclarativeBase):
-    """Base class for all models."""
-    pass
 
 
 class Document(Base):
