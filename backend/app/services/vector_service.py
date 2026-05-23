@@ -38,9 +38,10 @@ def _get_embedding_client() -> OpenAI:
 
 
 def ensure_collection():
-    """确保 Milvus collection 存在"""
+    """确保 Milvus collection 存在并已加载"""
     client = _get_milvus_client()
     if client.has_collection(COLLECTION_NAME):
+        client.load_collection(COLLECTION_NAME)
         return
 
     schema = CollectionSchema(fields=[
@@ -75,6 +76,7 @@ def index_document(doc_id: str, description: str):
 
     embedding = embed_text(description)
     client = _get_milvus_client()
+    client.load_collection(COLLECTION_NAME)
 
     # 删除旧索引（如有）
     client.delete(
@@ -98,6 +100,7 @@ def remove_document(doc_id: str):
     client = _get_milvus_client()
     if not client.has_collection(COLLECTION_NAME):
         return
+    client.load_collection(COLLECTION_NAME)
     client.delete(
         collection_name=COLLECTION_NAME,
         filter=f'document_id == "{doc_id}"',
@@ -112,6 +115,7 @@ def search_similar(query: str, top_k: int = 5, threshold: float = 0.3) -> list[d
     """
     ensure_collection()
     client = _get_milvus_client()
+    client.load_collection(COLLECTION_NAME)
 
     # 检查 collection 是否有数据
     stats = client.get_collection_stats(COLLECTION_NAME)

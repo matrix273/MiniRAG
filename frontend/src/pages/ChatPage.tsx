@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Button, Typography, TreeSelect, Tooltip, App, Dropdown } from 'antd'
+import { Button, Typography, TreeSelect, Tooltip, App, Dropdown, Modal } from 'antd'
 import {
   SendOutlined,
   PlusOutlined,
@@ -16,8 +16,9 @@ import {
   CloseOutlined,
   ThunderboltOutlined,
   SettingOutlined,
+  ExclamationCircleOutlined,
 } from '@ant-design/icons'
-import { chatApi, documentApi, folderApi } from '@/services/api'
+import { chatApi, documentApi, folderApi, vectorDbApi } from '@/services/api'
 import type { ChatSession, Document, Folder } from '@/types'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
@@ -765,7 +766,7 @@ const ChatPage = () => {
   const [activeCitations, setActiveCitations] = useState<Array<{ page: number; text: string; node_title?: string }>>([])
   const [selectedCitationIndex, setSelectedCitationIndex] = useState<number | null>(null)
   const [mode, setMode] = useState<"fast" | "deep">(
-    () => (localStorage.getItem("chatMode") as "fast" | "deep") || "fast"
+    () => (localStorage.getItem("chatMode") as "fast" | "deep") || "deep"
   );
   // PDF 面板状态 - 用于无引用时显示 PDF
   const [showPdfOnly, setShowPdfOnly] = useState(false)
@@ -903,7 +904,25 @@ const ChatPage = () => {
         setCurrentSession(session.id)
         setMessages([])
       } else {
-        // 无选中文档 → 创建 auto session（自动推断文档）
+        // 无选中文档 → 先检查向量数据库是否有数据
+        const vectorStatus = await vectorDbApi.getStatus()
+        if (!vectorStatus.has_data) {
+          Modal.confirm({
+            title: '向量数据库为空',
+            icon: <ExclamationCircleOutlined />,
+            content: '当前向量数据库中没有已索引的文档，自动匹配模式将无法找到相关文档。请先上传并索引文档，或选择具体文档进行对话。',
+            okText: '仍然继续',
+            cancelText: '取消',
+            onOk: async () => {
+              const session = await chatApi.createAutoSession('New Chat')
+              setSessions([session, ...sessions])
+              setCurrentSession(session.id)
+              setMessages([])
+            },
+          })
+          return
+        }
+        // 有向量数据 → 正常创建 auto session
         const session = await chatApi.createAutoSession('New Chat')
         setSessions([session, ...sessions])
         setCurrentSession(session.id)
@@ -1587,26 +1606,12 @@ const ChatPage = () => {
           <div style={{ maxWidth: 900, margin: '0 auto' }}>
             <div style={{ display: 'flex', gap: 8, marginBottom: 8, justifyContent: 'center' }}>
               <Button
-                type={mode === "fast" ? "primary" : "default"}
-                icon={<ThunderboltOutlined />}
-                onClick={() => {
-                  setMode("fast");
-                  localStorage.setItem("chatMode", "fast");
-                }}
-                size="small"
-              >
-                快速
-              </Button>
-              <Button
-                type={mode === "deep" ? "primary" : "default"}
+                type="primary"
                 icon={<SettingOutlined />}
-                onClick={() => {
-                  setMode("deep");
-                  localStorage.setItem("chatMode", "deep");
-                }}
                 size="small"
+                disabled
               >
-                深度
+                深度模式
               </Button>
             </div>
             <div

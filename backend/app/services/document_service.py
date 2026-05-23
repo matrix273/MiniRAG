@@ -414,7 +414,7 @@ class ChatService:
         relevant_node_ids = await self._tree_search_fast(query, doc_structure)
 
         # 阶段 2: 内容提取
-        context = self._extract_node_content_fast(doc_structure, relevant_node_ids)
+        context = self._extract_node_content_fast(doc_structure, relevant_node_ids, document)
 
         # 阶段 3: 生成回答
         answer = await self._generate_answer_fast(
@@ -429,6 +429,7 @@ class ChatService:
             tree=doc_structure,
             node_ids=relevant_node_ids,
             doc_id=document.id,
+            document=document,
         )
 
         return answer, citations
@@ -477,8 +478,11 @@ Directly return the final JSON structure. Do not output anything else."""
         return result.get("node_list", [])
 
 
-    def _extract_node_content_fast(self, tree, node_ids: list) -> str:
-        """从相关节点提取全文内容"""
+    def _extract_node_content_fast(self, tree, node_ids: list, document: Document = None) -> str:
+        """从相关节点提取全文内容
+        
+        如果节点text字段为空，则从document.pages中获取对应页面的内容。
+        """
         from pageindex.utils import create_node_mapping
 
         if isinstance(tree, list):
@@ -493,7 +497,24 @@ Directly return the final JSON structure. Do not output anything else."""
             if node_id in node_map:
                 node = node_map[node_id]
                 text = node.get("text", "")
-                if text:
+                
+                # 如果节点text为空，尝试从document.pages获取内容
+                if not text and document and document.pages:
+                    start_page = node.get("start_index")
+                    end_page = node.get("end_index")
+                    
+                    if start_page is not None and end_page is not None:
+                        # 从pages中提取对应页面的内容
+                        for page in document.pages:
+                            if isinstance(page, dict):
+                                page_num = page.get("page", 0)
+                                # 页面编号从1开始，start_index/end_index也从1开始
+                                if start_page <= page_num <= end_page:
+                                    page_content = page.get("content", "")
+                                    if page_content:
+                                        content_parts.append(page_content)
+                
+                elif text:
                     content_parts.append(text)
 
         return "\n\n".join(content_parts)
@@ -506,21 +527,39 @@ Directly return the final JSON structure. Do not output anything else."""
         document: Document,
         chat_history: list = None,
     ) -> str:
-        """基于上下文生成回答"""
+        """基于上下文生成回答（快速模式专用）"""
         from litellm import acompletion
 
-        # 获取系统提示词
-        agent_prompt = await get_active_prompt("agent_system")
-        rag_template = await get_active_prompt("rag_template")
-        if rag_template:
-            agent_prompt = f"{agent_prompt}\n\n{rag_template}"
+        # 使用快速模式专用提示词，避免工具使用指令
+        fast_prompt = f"""You are a document QA assistant. Answer the user's question based on the provided context.
 
-        # 添加文档上下文
-        agent_prompt += f"\n\nDocument: {document.original_name}"
+IMPORTANT RULES:
+1. Answer ONLY based on the context provided below. Do NOT make up information.
+2. If the context does not contain the answer, say so clearly.
+3. Use the same language as the user's question (Chinese → Chinese answer, English → English answer).
+4. Be concise and direct.
+5. Cite sources using [1], [2], [3] markers when referencing specific information.
+6. Do NOT mention tools, functions, or your analysis process.
+
+TABLE DATA HANDLING:
+The context may contain technical specification tables in text format. These tables typically have:
+- Parameter names in one section (e.g., "功耗", "电源规格", "制冷能力")
+- Corresponding values in another section (e.g., "400W", "100-240VAC", "120KW@10℃")
+- Values are often listed in the SAME ORDER as their parameter names
+- Example: If "功耗" is listed, the next value "400W(冗余情况下)，800 W（最大工况下）" is its corresponding value
+
+When answering questions about specific parameters:
+1. Find the parameter name in the context (e.g., "功耗")
+2. Look for the corresponding value (usually the next line or nearby)
+3. Extract and present the exact value found
+
+DOCUMENT CONTEXT:
+Document: {document.original_name}"""
+        
         if document.doc_description:
-            agent_prompt += f"\nDescription: {document.doc_description}"
+            fast_prompt += f"\nDescription: {document.doc_description}"
         if document.page_count:
-            agent_prompt += f"\nPages: {document.page_count}"
+            fast_prompt += f"\nPages: {document.page_count}"
 
         # 添加聊天历史
         if chat_history:
@@ -528,17 +567,21 @@ Directly return the final JSON structure. Do not output anything else."""
                 f"{msg.get('role', 'user')}: {msg.get('content', '')}"
                 for msg in chat_history[-5:]
             )
-            agent_prompt += f"\n\nChat history:\n{history_text}"
+            fast_prompt += f"\n\nChat history:\n{history_text}"
 
-        # 构造用户消息
-        user_message = f"""Answer the question based on the context:
+        fast_prompt += f"""
 
-Question: {query}
-
-Context:
+CONTEXT CONTENT:
 {context}
 
-Provide a clear, concise answer based only on the context provided."""
+ANSWER FORMAT:
+- Use $ ... $ for inline formulas, $$ ... $$ for display formulas.
+- Cite sources using [1], [2], [3] markers.
+- Be clear and concise.
+- Use the same language as the user's question."""
+
+        # 构造用户消息
+        user_message = f"Question: {query}"
 
         model = os.environ.get("DEFAULT_MODEL", settings.DEFAULT_MODEL)
         if os.environ.get("DASHSCOPE_API_KEY"):
@@ -547,7 +590,7 @@ Provide a clear, concise answer based only on the context provided."""
         response = await acompletion(
             model=model,
             messages=[
-                {"role": "system", "content": agent_prompt},
+                {"role": "system", "content": fast_prompt},
                 {"role": "user", "content": user_message},
             ],
             temperature=0.7,
@@ -566,8 +609,12 @@ Provide a clear, concise answer based only on the context provided."""
         tree,
         node_ids: list,
         doc_id: str,
+        document: Document = None,
     ) -> list:
-        """从节点 ID 生成引用"""
+        """从节点 ID 生成引用
+        
+        如果节点text字段为空，则从document.pages中获取对应页面的内容。
+        """
         from pageindex.utils import create_node_mapping
 
         if isinstance(tree, list):
@@ -581,9 +628,28 @@ Provide a clear, concise answer based only on the context provided."""
         for node_id in node_ids:
             if node_id in node_map:
                 node = node_map[node_id]
+                text = node.get("text", "")
+                
+                # 如果节点text为空，尝试从document.pages获取内容
+                if not text and document and document.pages:
+                    start_page = node.get("start_index")
+                    end_page = node.get("end_index")
+                    
+                    if start_page is not None and end_page is not None:
+                        # 从pages中提取对应页面的内容
+                        for page in document.pages:
+                            if isinstance(page, dict):
+                                page_num = page.get("page", 0)
+                                # 页面编号从1开始，start_index/end_index也从1开始
+                                if start_page <= page_num <= end_page:
+                                    page_content = page.get("content", "")
+                                    if page_content:
+                                        text = page_content[:2000]
+                                        break
+                
                 citations.append({
                     "page": node.get("page_index", 0),
-                    "text": node.get("text", "")[:2000],
+                    "text": text[:2000] if text else "",
                     "node_title": node.get("title", ""),
                     "document_id": doc_id,
                 })
@@ -796,9 +862,26 @@ Provide a clear, concise answer based only on the context provided."""
 
         return documents
 
-    async def query_general(self, query: str, chat_history: list = None) -> tuple[str, list]:
+    async def query_general(self, query: str, chat_history: list = None, db=None) -> tuple[str, list]:
         """无文档上下文的通用聊天"""
-        agent_prompt = await get_active_prompt("agent_system") or "你是一个有帮助的助手。"
+        agent_prompt = "你是一个有帮助的助手，可以回答各种问题。"
+
+        # 如果有 db 连接，注入文档列表信息以便回答系统级问题
+        if db is not None:
+            from sqlalchemy import select as sa_select
+            result = await db.execute(
+                sa_select(Document).where(Document.status == "completed").order_by(Document.created_at.desc())
+            )
+            docs = result.scalars().all()
+            if docs:
+                doc_lines = []
+                for d in docs:
+                    desc = f" - {d.doc_description[:100]}" if d.doc_description else ""
+                    pages = f" ({d.page_count}页)" if d.page_count else ""
+                    doc_lines.append(f"- {d.original_name}{pages}{desc}")
+                agent_prompt += f"\n\n当前系统中已索引的文档（共 {len(docs)} 个）：\n" + "\n".join(doc_lines)
+            else:
+                agent_prompt += "\n\n当前系统中没有已索引的文档。"
 
         if chat_history:
             history_text = "\n".join(

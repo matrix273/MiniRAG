@@ -183,6 +183,14 @@ export const chatApi = {
   },
 }
 
+// Vector DB
+export const vectorDbApi = {
+  getStatus: async (): Promise<{ row_count: number; has_data: boolean }> => {
+    const response = await api.get('/vector-db/status')
+    return response.data
+  },
+}
+
 // Folders
 export const folderApi = {
   // Get all folders (tree structure)

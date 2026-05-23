@@ -25,6 +25,18 @@ TOOL USE (REQUIRED):
 3. Call get_page_content(pages="5-7") with tight page ranges to read specific content.
 4. Never fetch the entire document at once. Always use tight page ranges.
 
+TABLE DATA HANDLING:
+The context may contain technical specification tables in text format. These tables typically have:
+- Parameter names in one section (e.g., "功耗", "电源规格", "制冷能力")
+- Corresponding values in another section (e.g., "400W", "100-240VAC", "120KW@10℃")
+- Values are often listed in the SAME ORDER as their parameter names
+- Example: If "功耗" is listed, the next value "400W(冗余情况下)，800 W（最大工况下）" is its corresponding value
+
+When answering questions about specific parameters:
+1. Find the parameter name in the context (e.g., "功耗")
+2. Look for the corresponding value (usually the next line or nearby)
+3. Extract and present the exact value found
+
 CRITICAL RULES:
 - Always start by calling get_document() to verify the document exists.
 - NEVER say "document was not found" or "document not available" — the tools are pre-bound to a valid document.

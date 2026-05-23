@@ -276,6 +276,48 @@ const DocumentList = () => {
     setSelectedDocIds([])
   }
 
+  const handleReprocessSelected = () => {
+    modal.confirm({
+      title: `Reprocess ${selectedDocIds.length} Document(s)?`,
+      icon: <ExclamationCircleOutlined />,
+      content: 'This will reindex selected documents using the current AI model.',
+      okText: 'Reprocess',
+      okType: 'primary',
+      cancelText: 'Cancel',
+      onOk: async () => {
+        try {
+          await Promise.all(selectedDocIds.map(id => documentApi.reprocess(id)))
+          message.success(`${selectedDocIds.length} document(s) reprocessing started`)
+          setSelectedDocIds([])
+          fetchDocuments()
+        } catch {
+          message.error('Failed to start reprocessing')
+        }
+      },
+    })
+  }
+
+  const handleDeleteSelected = () => {
+    modal.confirm({
+      title: `Delete ${selectedDocIds.length} Document(s)?`,
+      icon: <ExclamationCircleOutlined />,
+      content: 'This action cannot be undone.',
+      okText: 'Delete',
+      okType: 'danger',
+      cancelText: 'Cancel',
+      onOk: async () => {
+        try {
+          await Promise.all(selectedDocIds.map(id => documentApi.delete(id)))
+          message.success(`${selectedDocIds.length} document(s) deleted`)
+          setSelectedDocIds([])
+          fetchDocuments()
+        } catch {
+          message.error('Failed to delete documents')
+        }
+      },
+    })
+  }
+
   const handleSelect = (selectedKeys: React.Key[]) => {
     setSelectedKeys(selectedKeys)
     if (selectedKeys.length > 0) {
@@ -573,23 +615,31 @@ const DocumentList = () => {
             </Title>
             <Space>
               {selectedDocIds.length > 0 && (
-                <Dropdown
-                  menu={{
-                    items: [
-                      { key: 'root', label: 'Root Directory', onClick: () => handleMoveSelected('') },
-                      ...folderSelectItems.map(item => ({
-                        key: item.value,
-                        label: item.label,
-                        onClick: () => handleMoveSelected(item.value),
-                      })),
-                    ],
-                  }}
-                  trigger={['click']}
-                >
-                  <Button icon={<SwapOutlined />}>
-                    Move ({selectedDocIds.length})
+                <>
+                  <Button icon={<ReloadOutlined />} onClick={handleReprocessSelected}>
+                    Reprocess ({selectedDocIds.length})
                   </Button>
-                </Dropdown>
+                  <Button danger icon={<DeleteOutlined />} onClick={handleDeleteSelected}>
+                    Delete ({selectedDocIds.length})
+                  </Button>
+                  <Dropdown
+                    menu={{
+                      items: [
+                        { key: 'root', label: 'Root Directory', onClick: () => handleMoveSelected('') },
+                        ...folderSelectItems.map(item => ({
+                          key: item.value,
+                          label: item.label,
+                          onClick: () => handleMoveSelected(item.value),
+                        })),
+                      ],
+                    }}
+                    trigger={['click']}
+                  >
+                    <Button icon={<SwapOutlined />}>
+                      Move ({selectedDocIds.length})
+                    </Button>
+                  </Dropdown>
+                </>
               )}
               {selectedFolderId && (
                 <>

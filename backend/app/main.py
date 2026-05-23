@@ -538,8 +538,8 @@ async def send_message(
     """Send a message and get AI response using PageIndex reasoning-based retrieval."""
     from sqlalchemy import select
 
-    # 获取查询模式
-    query_mode = message_data.mode if hasattr(message_data, 'mode') else 'fast'
+    # 获取查询模式（快速模式已取消，强制使用深度模式）
+    query_mode = "deep"  # 快速模式已取消，强制使用深度模式
 
     # Get session
     result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
@@ -550,10 +550,28 @@ async def send_message(
 
     # 自动推断模式：每条消息都重新匹配文档
     if session.is_auto:
-        matched_docs = await chat_service.match_documents_to_query(
-            message_data.content, db
-        )
-        documents = matched_docs
+        import re as _re
+        # 系统级查询不走文档匹配，直接进入通用聊天
+        _system_patterns = [
+            r'有哪些.{0,4}(文档|文件|资料|内容)',
+            r'当前.{0,6}(文档|文件|资料)',
+            r'列出.{0,4}(文档|文件)',
+            r'总共.{0,4}(文档|文件)',
+            r'几.{0,2}(个|份).{0,4}(文档|文件)',
+            r'有什么.{0,4}(文档|文件)',
+            r'(文档|文件).{0,4}列表',
+            r'(文档|文件).{0,4}数量',
+            r'帮我.{0,4}(整理|总结|归纳).{0,4}(全部|所有|所有)',
+        ]
+        is_system_query = any(_re.search(p, message_data.content) for p in _system_patterns)
+        
+        if is_system_query:
+            documents = []
+        else:
+            matched_docs = await chat_service.match_documents_to_query(
+                message_data.content, db
+            )
+            documents = matched_docs
     else:
         # Get all documents (supports multi-document sessions)
         document_ids = session.document_ids or ([session.document_id] if session.document_id else [])
@@ -591,18 +609,11 @@ async def send_message(
         if documents:
             if len(documents) == 1:
                 # Single document query
-                if query_mode == "fast":
-                    answer, citations = await chat_service.query_document_fast(
-                        document=documents[0],
-                        query=message_data.content,
-                        chat_history=chat_history,
-                    )
-                else:
-                    answer, citations = await chat_service.query_document(
-                        document=documents[0],
-                        query=message_data.content,
-                        chat_history=chat_history,
-                    )
+                answer, citations = await chat_service.query_document(
+                    document=documents[0],
+                    query=message_data.content,
+                    chat_history=chat_history,
+                )
             else:
                 # Multi-document query
                 answer, citations = await chat_service.query_documents(
@@ -611,9 +622,9 @@ async def send_message(
                     chat_history=chat_history,
                 )
         else:
-            # 无匹配文档 → 通用聊天
+            # 无匹配文档 → 通用聊天（传入 db 以便回答系统级问题）
             answer, citations = await chat_service.query_general(
-                message_data.content, chat_history
+                message_data.content, chat_history, db
             )
     except Exception as e:
         # Log error and return fallback response
@@ -990,6 +1001,44 @@ async def update_system_config(key: str, data: SystemConfigUpdate):
         "description": config.description,
         "updated_at": config.updated_at,
     }
+
+
+# ========== Debug: Vector DB Inspector ==========
+
+@app.get("/api/vector-db/status")
+async def vector_db_status():
+    """检查向量数据库是否有数据"""
+    from app.services.vector_service import _get_milvus_client, ensure_collection, COLLECTION_NAME
+    try:
+        ensure_collection()
+        client = _get_milvus_client()
+        client.load_collection(COLLECTION_NAME)
+        stats = client.get_collection_stats(COLLECTION_NAME)
+        row_count = int(stats.get("row_count", 0))
+        return {"row_count": row_count, "has_data": row_count > 0}
+    except Exception:
+        return {"row_count": 0, "has_data": False}
+
+
+@app.get("/api/debug/vector-db")
+async def inspect_vector_db():
+    """临时调试端点：查看向量数据库中的所有数据"""
+    from app.services.vector_service import _get_milvus_client, ensure_collection, COLLECTION_NAME
+    ensure_collection()
+    client = _get_milvus_client()
+    client.load_collection(COLLECTION_NAME)
+    stats = client.get_collection_stats(COLLECTION_NAME)
+    row_count = int(stats.get("row_count", 0))
+    if row_count == 0:
+        return {"row_count": 0, "records": []}
+    # 查询所有记录（不包含 embedding 向量，太大）
+    results = client.query(
+        collection_name=COLLECTION_NAME,
+        filter="",
+        output_fields=["document_id", "description"],
+        limit=row_count,
+    )
+    return {"row_count": row_count, "records": results}
 
 
 # ========== Health Check ==========
