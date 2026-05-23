@@ -24,7 +24,7 @@ COLLECTION_NAME = "document_descriptions"
 def _get_milvus_client() -> MilvusClient:
     global _milvus_client
     if _milvus_client is None:
-        _milvus_client = MilvusClient(uri="./milvus_data.db")
+        _milvus_client = MilvusClient(uri=settings.MILVUS_DB_PATH)
     return _milvus_client
 
 

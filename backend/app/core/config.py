@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_SIZE: int = 50 * 1024 * 1024  # 50MB
     
+    # MilvusLite 向量数据库路径
+    MILVUS_DB_PATH: str = "./milvus_data.db"
+    
+    # gRPC 日志抑制（MilvusLite keepalive 告警）
+    GRPC_VERBOSITY: str = "ERROR"
+    GRPC_CPP_VERBOSITY_LEVEL: str = "error"
+    
     # AI/LLM
     # DashScope API Key (for Qwen models)
     DASHSCOPE_API_KEY: str = ""
