@@ -78,13 +78,15 @@ class TreeNode(BaseModel):
 class ChatSessionCreate(BaseModel):
     title: Optional[str] = "New Chat"
     document_ids: Optional[List[str]] = None  # 支持多文档
+    is_auto: Optional[bool] = False
 
 
 class ChatSessionResponse(BaseModel):
     id: str
-    document_id: str
+    document_id: Optional[str] = None
     document_ids: Optional[List[str]] = None
     title: str
+    is_auto: bool = False
     created_at: datetime
 
     class Config:

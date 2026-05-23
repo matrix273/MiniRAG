@@ -38,6 +38,7 @@ interface Message {
     page: number
     text: string
     node_title?: string
+    document_id?: string
   }>
   created_at: string
   isThinking?: boolean
@@ -719,6 +720,30 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
           </Tooltip>
         </div>
       </div>
+
+      {/* 显示 auto 模式匹配到的文档 */}
+      {!isUser && msg.citations && msg.citations.length > 0 && (() => {
+        const docIds = [...new Set(msg.citations!.map(c => c.document_id).filter(Boolean))]
+        if (docIds.length === 0) return null
+        return (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6, marginLeft: 44 }}>
+            {docIds.map(docId => (
+              <span
+                key={docId}
+                style={{
+                  fontSize: 12,
+                  color: '#6366f1',
+                  background: '#eef2ff',
+                  borderRadius: 4,
+                  padding: '2px 8px',
+                }}
+              >
+                📄 {docId!.slice(0, 8)}...
+              </span>
+            ))}
+          </div>
+        )
+      })()}
     </div>
   )
 }
@@ -870,17 +895,21 @@ const ChatPage = () => {
   }
 
   const handleCreateSession = async () => {
-    if (!selectedDoc) {
-      message.warning('Please select a document first')
-      return
-    }
-
     try {
-      const session = await chatApi.createSession(selectedDoc, 'New Chat', selectedDocs)
-      setSessions([session, ...sessions])
-      setCurrentSession(session.id)
-      setMessages([])
-      
+      if (selectedDoc) {
+        // 有选中文档 → 按现有逻辑创建 session
+        const session = await chatApi.createSession(selectedDoc, 'New Chat', selectedDocs)
+        setSessions([session, ...sessions])
+        setCurrentSession(session.id)
+        setMessages([])
+      } else {
+        // 无选中文档 → 创建 auto session（自动推断文档）
+        const session = await chatApi.createAutoSession('New Chat')
+        setSessions([session, ...sessions])
+        setCurrentSession(session.id)
+        setMessages([])
+      }
+
       // 创建新会话后聚焦到输入框
       setTimeout(() => {
         inputRef.current?.focus()
@@ -947,7 +976,7 @@ const ChatPage = () => {
     // 查找会话关联的文档
     const session = sessions.find(s => s.id === sessionId)
     if (session) {
-      const docIds = session.document_ids || [session.document_id]
+      const docIds = session.document_ids || (session.document_id ? [session.document_id] : [])
       setSelectedDoc(docIds[0])
       setSelectedDocs(docIds)
 
@@ -978,7 +1007,7 @@ const ChatPage = () => {
     setSessions(allSessions)
 
     const matchSession = allSessions.find((s: any) => {
-      const sessionDocIds = s.document_ids || [s.document_id]
+      const sessionDocIds = s.document_ids || (s.document_id ? [s.document_id] : [])
       if (sessionDocIds.length !== docIds.length) return false
       return docIds.every(id => sessionDocIds.includes(id))
     })
@@ -1114,16 +1143,16 @@ const ChatPage = () => {
           />
         </div>
 
-        {/* Document Selector - Tree Select (Multiple) */}
+        {/* Document Selector - Tree Select (Multiple, Optional) */}
         <div style={{ padding: 16, borderBottom: '1px solid #e5e7eb' }}>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8, color: '#6b7280' }}>
-            基于文档 (支持多选)
+            基于文档 (可选，留空则自动匹配)
           </Text>
           <TreeSelect
             style={{ width: '100%' }}
             value={selectedDocs.map(id => `doc:${id}`)}
             treeData={treeData}
-            placeholder="选择文件夹或文件"
+            placeholder="选择文档（可选，留空自动匹配）"
             treeDefaultExpandAll
             showSearch
             multiple
@@ -1154,7 +1183,7 @@ const ChatPage = () => {
         </div>
 
         {/* New Chat Button */}
-        <div style={{ padding: '8px 12px' }}>
+        <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -1166,7 +1195,7 @@ const ChatPage = () => {
               background: '#111827',
             }}
           >
-            New Chat
+            {selectedDocs.length > 0 ? `Chat with ${selectedDocs.length} doc${selectedDocs.length > 1 ? 's' : ''}` : 'New Chat (Auto-match)'}
           </Button>
         </div>
 
@@ -1333,11 +1362,17 @@ const ChatPage = () => {
               <div style={{ fontSize: 18, fontWeight: 500, color: '#374151', marginBottom: 8 }}>
                 How can I help you today?
               </div>
-              <div style={{ fontSize: 14 }}>
-                Ask questions about {selectedDocsInfo.length === 1
-                  ? <strong>{selectedDocsInfo[0]?.filename}</strong>
-                  : <strong>{selectedDocsInfo.length} documents</strong>
-                }
+              <div style={{ fontSize: 14, textAlign: 'center', maxWidth: 480 }}>
+                {selectedDocsInfo.length === 0 ? (
+                  <>
+                    直接提问，我会自动匹配最相关的文档来回答。<br />
+                    <span style={{ color: '#9ca3af' }}>你也可以在左侧选择特定文档进行针对性提问。</span>
+                  </>
+                ) : selectedDocsInfo.length === 1 ? (
+                  <>Ask questions about <strong>{selectedDocsInfo[0]?.filename}</strong></>
+                ) : (
+                  <>Ask questions about <strong>{selectedDocsInfo.length} documents</strong></>
+                )}
               </div>
             </div>
           ) : (

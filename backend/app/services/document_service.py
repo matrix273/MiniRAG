@@ -101,7 +101,14 @@ class DocumentService:
                 # Map DB doc_id to PageIndexClient so Agent tools can find the document
                 if indexed_doc_id != doc.id:
                     self.client.documents[doc.id] = self.client.documents[indexed_doc_id]
-                
+
+                # 建立向量索引（用于自动文档匹配）
+                try:
+                    from app.services.vector_service import index_document as vs_index
+                    vs_index(doc.id, doc.doc_description or "")
+                except Exception as ve:
+                    logging.warning(f"Vector indexing failed for doc {doc.id}: {ve}")
+
                 await db.commit()
                 
             except Exception as e:
@@ -654,23 +661,49 @@ Provide a clear, concise answer based only on the context provided."""
 
     def _cleanup_tool_references(self, answer: str) -> str:
         """Remove tool call references like get_document() from AI response."""
-        # Remove patterns like "Calling get_document()...", "I called get_document()..."
+        # 1. Remove ```tool_code``` code blocks entirely
+        answer = re.sub(r'```tool_code\s*\n[\s\S]*?```', '', answer)
+
+        # 2. Remove ```tool_name``` or other tool code blocks
+        answer = re.sub(r'```\s*tool_\w+\s*\n[\s\S]*?```', '', answer)
+
+        # 3. Remove patterns like "Calling get_document()...", "I called get_document()..."
         answer = re.sub(r"[Cc]alling\s+get_document\(\)[^.]*\.\s*", "", answer)
         answer = re.sub(r"[Ii]\s+(called|will call|need to call|should call)\s+get_document\(\)[^.]*\.\s*", "", answer)
 
-        # Remove patterns like "I need to get document info first"
+        # 4. Remove patterns like "I need to get document info first"
         answer = re.sub(r"I\s+(need to|will|should)\s+(get|check|verify)\s+(the\s+)?document[^.]*\.\s*", "", answer)
 
-        # Remove tool name mentions at start of sentences
-        answer = re.sub(r"^(get_document\(\)|get_document_structure\(\)|get_page_content\()\s*", "", answer, flags=re.MULTILINE)
+        # 5. Remove tool name mentions at start of sentences
+        answer = re.sub(r"^(get_document\(\)|get_document_structure\(\)|get_page_content\(\))\s*", "", answer, flags=re.MULTILINE)
 
-        # Clean up any leftover "Now let me..." or "Let me..." that followed tool calls
+        # 6. Remove standalone tool function calls as text (e.g. get_document() or get_page_content(pages="..."))
+        answer = re.sub(r'get_document\(\)[\s\n]*', '', answer)
+        answer = re.sub(r'get_document_structure\(\)[\s\n]*', '', answer)
+        answer = re.sub(r'get_page_content\([^)]*\)[\s\n]*', '', answer)
+
+        # 7. Remove Chinese thinking/planning text about tool usage
+        answer = re.sub(r'[，,]?\s*首先调用[^。]*。?\s*', '', answer)
+        answer = re.sub(r'[，,]?\s*先确认[^。]*。?\s*', '', answer)
+        answer = re.sub(r'[，,]?\s*再检查[^。]*。?\s*', '', answer)
+        answer = re.sub(r'[，,]?\s*再[查看读取][^。]*。?\s*', '', answer)
+        # Remove "我需要...调用..." spanning multiple sentences
+        answer = re.sub(r'我需要[\s\S]*?(?:调用|工具)[\s\S]*?(?:。|\n\n)', '', answer)
+        answer = re.sub(r'我将[\s\S]*?(?:调用|工具)[\s\S]*?(?:。|\n\n)', '', answer)
+        answer = re.sub(r'获取[^。]*信息[^。]*。?\s*$', '', answer, flags=re.MULTILINE)
+
+        # 8. Remove "q:" and "a:" prefixes/separators that some models output
+        answer = re.sub(r'[,，]\s*a:\s*$', '', answer, flags=re.MULTILINE)
+        answer = re.sub(r'^q:\s*', '', answer, flags=re.MULTILINE)
+        answer = re.sub(r'^a:\s*', '', answer, flags=re.MULTILINE)
+
+        # 9. Clean up any leftover "Now let me..." or "Let me..." that followed tool calls
         answer = re.sub(r"Now\s+let\s+me[^.]*\.\s*", "", answer)
         answer = re.sub(r"Let\s+me[^.]*\.\s*", "", answer)
 
-        # Clean up double spaces
-        answer = re.sub(r"\s+", " ", answer)
-        answer = re.sub(r"\n\s*\n", "\n\n", answer)
+        # 9. Clean up consecutive empty lines and extra spaces
+        answer = re.sub(r"\n{3,}", "\n\n", answer)
+        answer = re.sub(r"[ \t]+\n", "\n", answer)
 
         return answer.strip()
 
@@ -740,8 +773,50 @@ Provide a clear, concise answer based only on the context provided."""
                     seen_pages.add(idx)
             except ValueError:
                 continue
-        
+
         return citations
+
+    async def match_documents_to_query(self, query: str, db: AsyncSession, limit: int = 5) -> list[Document]:
+        """通过向量搜索匹配与 query 相关的文档"""
+        from app.services.vector_service import search_similar
+
+        matches = search_similar(query, top_k=limit, threshold=0.3)
+        if not matches:
+            return []
+
+        documents = []
+        for match in matches:
+            doc_id = match["document_id"]
+            result = await db.execute(
+                select(Document).where(Document.id == doc_id, Document.status == "completed")
+            )
+            doc = result.scalar_one_or_none()
+            if doc:
+                documents.append(doc)
+
+        return documents
+
+    async def query_general(self, query: str, chat_history: list = None) -> tuple[str, list]:
+        """无文档上下文的通用聊天"""
+        agent_prompt = await get_active_prompt("agent_system") or "你是一个有帮助的助手。"
+
+        if chat_history:
+            history_text = "\n".join(
+                f"{msg.get('role', 'user')}: {msg.get('content', '')}"
+                for msg in chat_history[-10:]
+            )
+            agent_prompt += f"\n\nChat history:\n{history_text}"
+
+        messages = [
+            {"role": "system", "content": agent_prompt},
+            {"role": "user", "content": query},
+        ]
+
+        response = await acompletion(
+            model=settings.DEFAULT_MODEL,
+            messages=messages,
+        )
+        return response.choices[0].message.content, []
 
 
 # Global service instances

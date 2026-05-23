@@ -338,7 +338,14 @@ async def delete_document(doc_id: str, db: AsyncSession = Depends(get_db)):
     # Delete from database (cascade will handle related records)
     await db.execute(delete(Document).where(Document.id == doc_id))
     await db.commit()
-    
+
+    # 清理向量索引
+    try:
+        from app.services.vector_service import remove_document as vs_remove
+        vs_remove(doc_id)
+    except Exception:
+        pass
+
     return {"message": "Document deleted successfully"}
 
 
@@ -420,6 +427,7 @@ async def create_chat_session(
         document_id=doc_id,
         document_ids=session.document_ids,
         title=session.title,
+        is_auto=session.is_auto,
         created_at=session.created_at,
     )
 
@@ -441,10 +449,35 @@ async def list_all_chat_sessions(db: AsyncSession = Depends(get_db)):
             document_id=s.document_id,
             document_ids=s.document_ids,
             title=s.title,
+            is_auto=s.is_auto,
             created_at=s.created_at,
         )
         for s in sessions
     ]
+
+
+@app.post("/api/chat/auto", response_model=ChatSessionResponse)
+async def create_auto_chat_session(
+    title: str = "New Chat",
+    db: AsyncSession = Depends(get_db)
+):
+    """创建无需选择文档的自动推断会话"""
+    session = ChatSession(
+        document_id=None,
+        is_auto=True,
+        title=title,
+    )
+    db.add(session)
+    await db.commit()
+
+    return ChatSessionResponse(
+        id=session.id,
+        document_id=session.document_id,
+        document_ids=session.document_ids,
+        title=session.title,
+        is_auto=session.is_auto,
+        created_at=session.created_at,
+    )
 
 
 @app.get("/api/documents/{doc_id}/chat", response_model=List[ChatSessionResponse])
@@ -465,6 +498,7 @@ async def list_chat_sessions(doc_id: str, db: AsyncSession = Depends(get_db)):
             document_id=s.document_id,
             document_ids=s.document_ids,
             title=s.title,
+            is_auto=s.is_auto,
             created_at=s.created_at,
         )
         for s in sessions
@@ -514,17 +548,21 @@ async def send_message(
     if not session:
         raise HTTPException(status_code=404, detail="Chat session not found")
 
-    # Get all documents (supports multi-document sessions)
-    document_ids = session.document_ids or [session.document_id]
-    documents = []
-    for doc_id in document_ids:
-        result = await db.execute(select(Document).where(Document.id == doc_id))
-        doc = result.scalar_one_or_none()
-        if doc and doc.status == "completed":
-            documents.append(doc)
-
-    if not documents:
-        raise HTTPException(status_code=400, detail="No valid documents found in session")
+    # 自动推断模式：每条消息都重新匹配文档
+    if session.is_auto:
+        matched_docs = await chat_service.match_documents_to_query(
+            message_data.content, db
+        )
+        documents = matched_docs
+    else:
+        # Get all documents (supports multi-document sessions)
+        document_ids = session.document_ids or ([session.document_id] if session.document_id else [])
+        documents = []
+        for doc_id in document_ids:
+            result = await db.execute(select(Document).where(Document.id == doc_id))
+            doc = result.scalar_one_or_none()
+            if doc and doc.status == "completed":
+                documents.append(doc)
 
     # Save user message
     user_message = ChatMessage(
@@ -548,28 +586,34 @@ async def send_message(
         for msg in history[-10:]  # Include last 10 messages for context
     ]
 
-    # Query AI with multi-document context
+    # Query AI
     try:
-        if len(documents) == 1:
-            # Single document query
-            if query_mode == "fast":
-                answer, citations = await chat_service.query_document_fast(
-                    document=documents[0],
-                    query=message_data.content,
-                    chat_history=chat_history,
-                )
+        if documents:
+            if len(documents) == 1:
+                # Single document query
+                if query_mode == "fast":
+                    answer, citations = await chat_service.query_document_fast(
+                        document=documents[0],
+                        query=message_data.content,
+                        chat_history=chat_history,
+                    )
+                else:
+                    answer, citations = await chat_service.query_document(
+                        document=documents[0],
+                        query=message_data.content,
+                        chat_history=chat_history,
+                    )
             else:
-                answer, citations = await chat_service.query_document(
-                    document=documents[0],
+                # Multi-document query
+                answer, citations = await chat_service.query_documents(
+                    documents=documents,
                     query=message_data.content,
                     chat_history=chat_history,
                 )
         else:
-            # Multi-document query
-            answer, citations = await chat_service.query_documents(
-                documents=documents,
-                query=message_data.content,
-                chat_history=chat_history,
+            # 无匹配文档 → 通用聊天
+            answer, citations = await chat_service.query_general(
+                message_data.content, chat_history
             )
     except Exception as e:
         # Log error and return fallback response
@@ -618,7 +662,9 @@ async def update_chat_session(
     return ChatSessionResponse(
         id=session.id,
         document_id=session.document_id,
+        document_ids=session.document_ids,
         title=session.title,
+        is_auto=session.is_auto,
         created_at=session.created_at,
     )
 

@@ -159,6 +159,12 @@ export const chatApi = {
     const response = await api.post(`/chat/${sessionId}/message`, { content, mode })
     return response.data
   },
+
+  // Create auto-inference chat session (no document selection needed)
+  createAutoSession: async (title?: string): Promise<ChatSession> => {
+    const response = await api.post('/chat/auto', null, { params: { title: title || 'New Chat' } })
+    return response.data
+  },
   
   // Update session title
   updateSession: async (sessionId: string, title: string): Promise<ChatSession> => {

@@ -41,9 +41,10 @@ export interface TreeNode {
 
 export interface ChatSession {
   id: string
-  document_id: string
+  document_id?: string
   document_ids?: string[]
   title: string
+  is_auto?: boolean
   created_at: string
 }
 
