@@ -230,18 +230,7 @@ async def get_document_structure(doc_id: str, db: AsyncSession = Depends(get_db)
     if not doc.structure:
         return {"structure": []}
     
-    # Remove text fields to save bandwidth (frontend can fetch pages on demand)
-    def clean_structure(nodes):
-        if isinstance(nodes, list):
-            return [clean_structure(node) for node in nodes]
-        if isinstance(nodes, dict):
-            cleaned = {k: v for k, v in nodes.items() if k != "text"}
-            if "nodes" in cleaned:
-                cleaned["nodes"] = clean_structure(cleaned["nodes"])
-            return cleaned
-        return nodes
-    
-    return {"structure": clean_structure(doc.structure)}
+    return {"structure": doc.structure}
 
 
 @app.get("/api/documents/{doc_id}/content")

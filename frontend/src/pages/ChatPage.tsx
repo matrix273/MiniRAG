@@ -953,7 +953,7 @@ const ChatPage = () => {
     const isFirstMessage = messages.length === 0
 
     try {
-      const response = await chatApi.sendMessage(currentSession, inputMessage, "deep")
+      const response = await chatApi.sendMessage(currentSession, inputMessage)
       setMessages(prev => [...prev, response as Message])
       
       // 自动重命名会话（类似 ChatGPT）

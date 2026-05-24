@@ -95,7 +95,6 @@ class ChatSessionResponse(BaseModel):
 
 class ChatMessageCreate(BaseModel):
     content: str
-    mode: str = "deep"  # "fast" | "deep"
 
 
 class ChatSessionUpdate(BaseModel):
