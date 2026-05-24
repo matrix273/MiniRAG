@@ -28,8 +28,10 @@ class Settings(BaseSettings):
     MILVUS_DB_PATH: str = "./milvus_data.db"
     
     # gRPC 日志抑制（MilvusLite keepalive 告警）
-    GRPC_VERBOSITY: str = "ERROR"
-    GRPC_CPP_VERBOSITY_LEVEL: str = "error"
+    GRPC_VERBOSITY: str = "NONE"
+    GRPC_CPP_VERBOSITY_LEVEL: str = "none"
+    
+
     
     # AI/LLM
     # DashScope API Key (for Qwen models)

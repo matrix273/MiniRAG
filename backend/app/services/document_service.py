@@ -25,6 +25,37 @@ def _get_pageindex_client_class():
     return PageIndexClient
 
 
+def _extract_structure_summary(structure, max_depth=2):
+    """Extract a readable summary from document structure."""
+    if not structure:
+        return "No structure available"
+
+    summary_lines = []
+
+    def traverse(nodes, depth=0):
+        if depth >= max_depth:
+            return
+        for node in nodes:
+            title = node.get("title", "Untitled")
+            node_type = node.get("type", "section")
+            start = node.get("start_index", 0)
+            end = node.get("end_index", 0)
+            indent = "  " * depth
+            summary_lines.append(f"{indent}- {title} ({node_type}, pages {start}-{end})")
+            summary = node.get("summary", "")
+            if summary and depth < max_depth - 1:
+                summary_lines.append(f"{indent}  Summary: {summary[:200]}...")
+            if "nodes" in node and node["nodes"]:
+                traverse(node["nodes"], depth + 1)
+
+    if isinstance(structure, list):
+        traverse(structure)
+    elif isinstance(structure, dict):
+        traverse([structure])
+
+    return "\n".join(summary_lines)
+
+
 class DocumentService:
     """Service for document indexing and retrieval."""
     
@@ -88,6 +119,7 @@ class DocumentService:
                 # Update document record
                 doc.status = "completed"
                 doc.structure = structure
+                doc.structure_summary = _extract_structure_summary(structure)
                 doc.doc_description = doc_info.get("doc_description", "")
                 doc.page_count = doc_info.get("page_count")
                 doc.line_count = doc_info.get("line_count")
@@ -234,6 +266,17 @@ class ChatService:
             agent_prompt += f"\nDescription: {document.doc_description}"
         if document.page_count:
             agent_prompt += f"\nPages: {document.page_count}"
+        
+        # Inject pre-computed structure summary to skip get_document + get_document_structure tool calls
+        if document.structure_summary:
+            agent_prompt += f"\n\nDocument Structure:\n{document.structure_summary}"
+            # Override tool instructions: only get_page_content is available
+            agent_prompt += (
+                "\n\nIMPORTANT: Document metadata and structure are already provided above. "
+                "You ONLY have access to the get_page_content() tool. "
+                "Call get_page_content(pages=\"5-7\") with tight page ranges to read specific content. "
+                "Do NOT attempt to call get_document() or get_document_structure() — they are not available."
+            )
 
         # Add chat history context
         if chat_history:
@@ -249,11 +292,14 @@ class ChatService:
 
         # Create and run agent
         model = create_model()
+        # When structure_summary is injected, skip get_document/get_document_structure tools
+        include_metadata_tools = not document.structure_summary
         agent, tracked_client = create_agent(
             doc_client=self.doc_service.client,
             doc_id=document.id,
             system_prompt=agent_prompt,
             model=model,
+            include_metadata_tools=include_metadata_tools,
         )
 
         answer, is_fallback, accessed_pages = await run_agent_with_guardrails(
@@ -306,7 +352,7 @@ class ChatService:
             if doc.page_count:
                 section += f"\nPages: {doc.page_count}"
 
-            structure_summary = self._extract_structure_summary(doc.structure)
+            structure_summary = _extract_structure_summary(doc.structure)
             if structure_summary and structure_summary != "No structure available":
                 section += f"\nStructure:\n{structure_summary}"
 
@@ -364,7 +410,7 @@ class ChatService:
 
     async def _fallback_query(self, document: Document, query: str, system_prompt: str) -> str:
         """Fallback using structure summary + direct litellm call."""
-        structure_summary = self._extract_structure_summary(document.structure)
+        structure_summary = _extract_structure_summary(document.structure)
 
         # Append instruction to prevent tool name leakage
         fallback_user_msg = (
@@ -655,36 +701,6 @@ ANSWER FORMAT:
                 })
 
         return citations[:5]  # 限制最多 5 条引用
-
-    def _extract_structure_summary(self, structure, max_depth=2):
-        """Extract a readable summary from document structure."""
-        if not structure:
-            return "No structure available"
-
-        summary_lines = []
-
-        def traverse(nodes, depth=0):
-            if depth >= max_depth:
-                return
-            for node in nodes:
-                title = node.get("title", "Untitled")
-                node_type = node.get("type", "section")
-                start = node.get("start_index", 0)
-                end = node.get("end_index", 0)
-                indent = "  " * depth
-                summary_lines.append(f"{indent}- {title} ({node_type}, pages {start}-{end})")
-                summary = node.get("summary", "")
-                if summary and depth < max_depth - 1:
-                    summary_lines.append(f"{indent}  Summary: {summary[:200]}...")
-                if "nodes" in node and node["nodes"]:
-                    traverse(node["nodes"], depth + 1)
-
-        if isinstance(structure, list):
-            traverse(structure)
-        elif isinstance(structure, dict):
-            traverse([structure])
-
-        return "\n".join(summary_lines)
 
     def _remove_latex_equation_labels(self, answer: str) -> str:
         r"""Remove LaTeX equation labels like (1), (2.1) etc. at the end of display math blocks.

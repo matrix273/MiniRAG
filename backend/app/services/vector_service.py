@@ -62,8 +62,13 @@ def ensure_collection():
 
 def embed_text(text: str) -> list[float]:
     """调用 DashScope text-embedding-v3 生成向量"""
+    import time as _time
+    import logging
+    _perf = logging.getLogger("perf")
+    _t = _time.perf_counter()
     client = _get_embedding_client()
     resp = client.embeddings.create(model=EMBEDDING_MODEL, input=text)
+    _perf.info(f"[perf] embedding: {_time.perf_counter()-_t:.3f}s, input_len={len(text)}")
     return resp.data[0].embedding
 
 

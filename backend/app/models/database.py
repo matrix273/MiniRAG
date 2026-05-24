@@ -46,6 +46,7 @@ class Document(Base):
     page_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     line_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     structure: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    structure_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 预计算的结构摘要，用于加速 Agent 查询
     pages: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSON, nullable=True)  # 原始页面文本，用于调试和精确检索
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

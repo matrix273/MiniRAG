@@ -12,6 +12,16 @@ import json
 from app.core.config import get_settings
 settings = get_settings()
 
+# 配置性能日志
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logging.getLogger("perf").setLevel(logging.INFO)
+# 抑制 LiteLLM 远程模型定价获取失败的 WARNING
+logging.getLogger("LiteLLM").setLevel(logging.ERROR)
+
 # LiteLLM 直接使用 DASHSCOPE_API_KEY 环境变量
 if settings.DASHSCOPE_API_KEY:
     os.environ["DASHSCOPE_API_KEY"] = settings.DASHSCOPE_API_KEY
@@ -536,10 +546,12 @@ async def send_message(
     db: AsyncSession = Depends(get_db)
 ):
     """Send a message and get AI response using PageIndex reasoning-based retrieval."""
-    from sqlalchemy import select
+    import time as _time
+    import logging
+    _perf_log = logging.getLogger("perf")
+    _t_total = _time.perf_counter()
 
-    # 获取查询模式（快速模式已取消，强制使用深度模式）
-    query_mode = "deep"  # 快速模式已取消，强制使用深度模式
+    from sqlalchemy import select
 
     # Get session
     result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
@@ -551,7 +563,6 @@ async def send_message(
     # 自动推断模式：每条消息都重新匹配文档
     if session.is_auto:
         import re as _re
-        # 系统级查询不走文档匹配，直接进入通用聊天
         _system_patterns = [
             r'有哪些.{0,4}(文档|文件|资料|内容)',
             r'当前.{0,6}(文档|文件|资料)',
@@ -568,12 +579,13 @@ async def send_message(
         if is_system_query:
             documents = []
         else:
+            _t0 = _time.perf_counter()
             matched_docs = await chat_service.match_documents_to_query(
                 message_data.content, db
             )
+            _perf_log.info(f"[perf] vector_search: {_time.perf_counter()-_t0:.3f}s, matched={len(matched_docs)} docs")
             documents = matched_docs
     else:
-        # Get all documents (supports multi-document sessions)
         document_ids = session.document_ids or ([session.document_id] if session.document_id else [])
         documents = []
         for doc_id in document_ids:
@@ -601,28 +613,26 @@ async def send_message(
 
     chat_history = [
         {"role": msg.role, "content": msg.content}
-        for msg in history[-10:]  # Include last 10 messages for context
+        for msg in history[-10:]
     ]
 
     # Query AI
+    _t_query = _time.perf_counter()
     try:
         if documents:
             if len(documents) == 1:
-                # Single document query
                 answer, citations = await chat_service.query_document(
                     document=documents[0],
                     query=message_data.content,
                     chat_history=chat_history,
                 )
             else:
-                # Multi-document query
                 answer, citations = await chat_service.query_documents(
                     documents=documents,
                     query=message_data.content,
                     chat_history=chat_history,
                 )
         else:
-            # 无匹配文档 → 通用聊天（传入 db 以便回答系统级问题）
             answer, citations = await chat_service.query_general(
                 message_data.content, chat_history, db
             )
@@ -633,6 +643,8 @@ async def send_message(
         answer = f"I'm sorry, I encountered an error processing your question. Error: {str(e)}"
         citations = []
 
+    _perf_log.info(f"[perf] ai_query: {_time.perf_counter()-_t_query:.3f}s, docs={len(documents)}")
+
     # Save AI response
     ai_message = ChatMessage(
         session_id=session_id,
@@ -642,6 +654,8 @@ async def send_message(
     )
     db.add(ai_message)
     await db.commit()
+
+    _perf_log.info(f"[perf] total: {_time.perf_counter()-_t_total:.3f}s, session={session_id[:8]}...")
 
     return ChatMessageResponse(
         id=ai_message.id,
