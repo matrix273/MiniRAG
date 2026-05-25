@@ -462,53 +462,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
                       return <>{children}</>
                     }
                     
-                    // Process children to find citation references [1], [2], etc.
-                    const processChildren = (nodes: React.ReactNode): React.ReactNode => {
-                      return React.Children.map(nodes, (child) => {
-                        if (typeof child === 'string') {
-                          // Split string by citation patterns like [1], [2]
-                          const parts = child.split(/(\[\d+\])/g)
-                          return parts.map((part, i) => {
-                            const match = part.match(/^\[(\d+)\]$/)
-                            if (match) {
-                              const index = parseInt(match[1], 10) - 1
-                              if (index >= 0 && msg.citations && index < msg.citations.length) {
-                                return (
-                                  <sup key={i}>
-                                    <button
-                                      onClick={() => onCitationClick?.(msg.citations || [], index)}
-                                      style={{
-                                        background: '#fef3c7',
-                                        border: 'none',
-                                        borderRadius: 3,
-                                        padding: '0 4px',
-                                        marginLeft: 2,
-                                        color: '#d97706',
-                                        fontWeight: 500,
-                                        cursor: 'pointer',
-                                        fontSize: 'inherit',
-                                        transition: 'all 0.2s',
-                                      }}
-                                      title="查看引用原文"
-                                    >
-                                      {part}
-                                    </button>
-                                  </sup>
-                                )
-                              }
-                            }
-                            return part
-                          })
-                        }
-                        if (React.isValidElement(child)) {
-                          // Recursively process nested elements
-                          const processed = processChildren((child.props as any).children)
-                          return React.cloneElement(child, { ...child.props, children: processed })
-                        }
-                        return child
-                      })
-                    }
-                    return <p style={{ margin: 0 }}>{processChildren(children)}</p>
+                    return <p style={{ margin: 0 }}>{children}</p>
                   },
                   h1({ children }) {
                     return <h1 style={{ margin: '16px 0 8px', fontSize: 20, fontWeight: 600 }}>{children}</h1>

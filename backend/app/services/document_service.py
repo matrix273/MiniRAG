@@ -569,12 +569,8 @@ class ChatService:
             return citations
         
         # Fallback: parse #citation-page-N links from answer
-        # Support both new format: [text](#citation-page-N)
-        # and legacy format: [N] (for backward compatibility)
         citation_links = re.findall(r'\[([^\]]*)\]\(#citation-page-(\d+)\)', answer)
-        bracket_citations = re.findall(r'\[(\d+)\]', answer)
         
-        # Prefer citation:// links if found
         seen_pages = set()
         if citation_links:
             for display_text, page_str in citation_links[:5]:
@@ -591,24 +587,6 @@ class ChatService:
                             "index": len(citations) + 1
                         })
                         seen_pages.add(page_num)
-                except ValueError:
-                    continue
-        elif bracket_citations:
-            # Legacy format: [N]
-            for idx_str in bracket_citations[:5]:
-                try:
-                    idx = int(idx_str)
-                    if idx in page_map and idx not in seen_pages:
-                        pd = page_map[idx]
-                        text = pd.get("content", "")[:2000]
-                        citations.append({
-                            "page": idx,
-                            "text": text,
-                            "node_title": f"Page {idx}",
-                            "document_id": document.id,
-                            "index": len(citations) + 1
-                        })
-                        seen_pages.add(idx)
                 except ValueError:
                     continue
 
