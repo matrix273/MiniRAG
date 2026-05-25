@@ -528,7 +528,7 @@ class ChatService:
         
         Args:
             document: Document object
-            answer: AI answer with [1], [2] markers
+            answer: AI answer with citation://page/N links
             accessed_pages: List of page numbers that were actually accessed
         
         Returns:
@@ -562,32 +562,55 @@ class ChatService:
                         "page": page_num,
                         "text": text,
                         "node_title": f"Page {page_num}",
-                        "document_id": document.id
+                        "document_id": document.id,
+                        "index": i + 1  # Citation index (1-based)
                     })
             
             return citations
         
-        # Fallback: parse [N] markers from answer and try to match pages
+        # Fallback: parse #citation-page-N links from answer
+        # Support both new format: [text](#citation-page-N)
+        # and legacy format: [N] (for backward compatibility)
+        citation_links = re.findall(r'\[([^\]]*)\]\(#citation-page-(\d+)\)', answer)
         bracket_citations = re.findall(r'\[(\d+)\]', answer)
-        if not bracket_citations:
-            return citations
         
+        # Prefer citation:// links if found
         seen_pages = set()
-        for idx_str in bracket_citations[:5]:
-            try:
-                idx = int(idx_str)
-                if idx in page_map and idx not in seen_pages:
-                    pd = page_map[idx]
-                    text = pd.get("content", "")[:2000]
-                    citations.append({
-                        "page": idx,
-                        "text": text,
-                        "node_title": f"Page {idx}",
-                        "document_id": document.id
-                    })
-                    seen_pages.add(idx)
-            except ValueError:
-                continue
+        if citation_links:
+            for display_text, page_str in citation_links[:5]:
+                try:
+                    page_num = int(page_str)
+                    if page_num in page_map and page_num not in seen_pages:
+                        pd = page_map[page_num]
+                        text = pd.get("content", "")[:2000]
+                        citations.append({
+                            "page": page_num,
+                            "text": text,
+                            "node_title": display_text if display_text else f"Page {page_num}",
+                            "document_id": document.id,
+                            "index": len(citations) + 1
+                        })
+                        seen_pages.add(page_num)
+                except ValueError:
+                    continue
+        elif bracket_citations:
+            # Legacy format: [N]
+            for idx_str in bracket_citations[:5]:
+                try:
+                    idx = int(idx_str)
+                    if idx in page_map and idx not in seen_pages:
+                        pd = page_map[idx]
+                        text = pd.get("content", "")[:2000]
+                        citations.append({
+                            "page": idx,
+                            "text": text,
+                            "node_title": f"Page {idx}",
+                            "document_id": document.id,
+                            "index": len(citations) + 1
+                        })
+                        seen_pages.add(idx)
+                except ValueError:
+                    continue
 
         return citations
 

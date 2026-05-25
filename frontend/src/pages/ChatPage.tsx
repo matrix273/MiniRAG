@@ -256,12 +256,13 @@ const SessionItem: React.FC<{
 // Message bubble component - Deepseek style
 interface MessageBubbleProps {
   msg: Message
-  onCitationClick?: (citations: Array<{ page: number; text: string; node_title?: string }>, index: number) => void
+  onCitationClick?: (citations: Array<{ page: number; text: string; node_title?: string; document_id?: string }>, index: number) => void
   isSelected?: boolean
   onToggleSelect?: () => void
+  selectedDoc?: string | null
 }
 
-const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isSelected, onToggleSelect }) => {
+const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isSelected, onToggleSelect, selectedDoc }) => {
   const { message } = App.useApp()
   const isUser = msg.role === 'user'
   const [copied, setCopied] = useState(false)
@@ -588,6 +589,62 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
                       </td>
                     )
                   },
+                  a({ href, children, ...props }: any) {
+                    // 检查是否是 citation 链接: #citation-page-N
+                    const citationMatch = href?.match(/^#citation-page-(\d+)$/)
+                    if (citationMatch) {
+                      const pageNum = parseInt(citationMatch[1], 10)
+                      const citationIndex = msg.citations?.findIndex(c => c.page === pageNum) ?? -1
+                      
+                      return (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            if (citationIndex >= 0 && msg.citations) {
+                              onCitationClick?.(msg.citations, citationIndex)
+                            } else {
+                              const tempCitation = {
+                                page: pageNum,
+                                text: '',
+                                node_title: children?.toString() || `Page ${pageNum}`,
+                                document_id: selectedDoc || undefined,
+                              }
+                              onCitationClick?.([tempCitation], 0)
+                            }
+                          }}
+                          style={{
+                            background: '#fef3c7',
+                            border: 'none',
+                            borderRadius: 3,
+                            padding: '0 4px',
+                            marginLeft: 2,
+                            color: '#d97706',
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                            fontSize: 'inherit',
+                            transition: 'all 0.2s',
+                          }}
+                          title="查看引用原文"
+                        >
+                          {children}
+                        </button>
+                      )
+                    }
+                    
+                    // 普通链接
+                    return (
+                      <a 
+                        href={href} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        style={{ color: '#3b82f6', textDecoration: 'underline' }}
+                        {...props}
+                      >
+                        {children}
+                      </a>
+                    )
+                  },
                   html({ children }: any) {
                     // 普通 HTML，直接渲染
                     const htmlContent = String(children)
@@ -721,29 +778,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
         </div>
       </div>
 
-      {/* 显示 auto 模式匹配到的文档 */}
-      {!isUser && msg.citations && msg.citations.length > 0 && (() => {
-        const docIds = [...new Set(msg.citations!.map(c => c.document_id).filter(Boolean))]
-        if (docIds.length === 0) return null
-        return (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6, marginLeft: 44 }}>
-            {docIds.map(docId => (
-              <span
-                key={docId}
-                style={{
-                  fontSize: 12,
-                  color: '#6366f1',
-                  background: '#eef2ff',
-                  borderRadius: 4,
-                  padding: '2px 8px',
-                }}
-              >
-                📄 {docId!.slice(0, 8)}...
-              </span>
-            ))}
-          </div>
-        )
-      })()}
     </div>
   )
 }
@@ -1409,7 +1443,7 @@ const ChatPage = () => {
                     animation: 'fadeIn 0.3s ease-out',
                   }}
                 >
-                  <MessageBubble msg={msg} onCitationClick={handleCitationClick} isSelected={selectedMessages.has(msg.id)} onToggleSelect={() => toggleMessageSelection(msg.id)} />
+                  <MessageBubble msg={msg} onCitationClick={handleCitationClick} isSelected={selectedMessages.has(msg.id)} onToggleSelect={() => toggleMessageSelection(msg.id)} selectedDoc={selectedDoc} />
                 </div>
               ))}
               {sending && (

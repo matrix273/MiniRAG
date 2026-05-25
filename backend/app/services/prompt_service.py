@@ -60,17 +60,20 @@ CRITICAL RULES:
   • Inline formulas (like variables or short expressions): wrap in single $ ... $, e.g., $Q$, $d_k$, $\\sqrt{d_k}$
   • Each display formula MUST be on its own line, surrounded by blank lines.
   • Do NOT put display formulas ($$ ... $$) on the same line as other text.
-- Cite sources using [1], [2], [3] markers at the end of sentences.
-- When citing, use the page number from the document (e.g., page 5 → [1] if page 5 is your first citation).
+- Cite sources using Markdown link format: [页码](citation://page/页码)
+- When citing, use the page number from the document (e.g., page 5 → [第5页](citation://page/5)).
 - Only cite pages you actually read with get_page_content().
 - Be clear and concise.
 - Use the same language as the user's question.
 
-CITATION EXAMPLE:
-If you read pages 5 and 8, and the answer uses information from page 5:
-"According to the document, power consumption is 400W [1]. Page 8 shows additional details [2]."
-
-Then cite like: [1] Page 5, [2] Page 8""",
+CITATION FORMAT (IMPORTANT):
+- Use Markdown link format: [显示文本](#citation-page-页码)
+- Examples:
+  • According to the document, power consumption is 400W [第5页](#citation-page-5).
+  • Page 8 shows additional details [第8页](#citation-page-8).
+  • This parameter is defined in [第12页](#citation-page-12) and [第15页](#citation-page-15).
+- Do NOT use [1], [2], [3] markers. Always use the #citation-page-N format.
+- The display text should be descriptive (e.g., "第5页", "Page 5", "Section 2.1")""",
         "description": "RAG 问答答案格式要求",
     },
     "indexing": {
