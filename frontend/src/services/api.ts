@@ -191,6 +191,25 @@ export const vectorDbApi = {
   },
 }
 
+// Vision
+export const visionApi = {
+  // Get page images for visual analysis
+  getPageImages: async (docId: string, pages: string, dpi: number = 150): Promise<{ images: Array<{ page: number; image_path: string }> }> => {
+    const response = await api.get(`/documents/${docId}/page-images`, {
+      params: { pages, dpi },
+    })
+    return response.data
+  },
+
+  // Get page images as base64 encoded strings
+  getPageImagesBase64: async (docId: string, pages: string, dpi: number = 150): Promise<{ images: Array<{ page: number; base64: string }> }> => {
+    const response = await api.get(`/documents/${docId}/page-images-base64`, {
+      params: { pages, dpi },
+    })
+    return response.data
+  },
+}
+
 // Folders
 export const folderApi = {
   // Get all folders (tree structure)
