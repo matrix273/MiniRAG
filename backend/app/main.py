@@ -75,6 +75,9 @@ from app.api.admin import router as admin_router
 app.include_router(auth_router)
 # Include admin router
 app.include_router(admin_router)
+# Include markdown documents router
+from app.api.documents import router as documents_router
+app.include_router(documents_router)
 
 
 @app.on_event("startup")

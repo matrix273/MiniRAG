@@ -1,0 +1,101 @@
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+import uuid
+import os
+from datetime import datetime
+
+from app.models.database import get_db, Document
+from app.core.config import get_settings
+from app.services.document_service import doc_service
+from app.schemas.schemas import SaveContentRequest, CreateMarkdownRequest, DocumentResponse
+
+router = APIRouter()
+settings = get_settings()
+
+
+@router.put("/api/documents/{doc_id}/content")
+async def save_document_content(
+    doc_id: str,
+    request: SaveContentRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
+):
+    """保存 Markdown 文档内容并重新索引"""
+    result = await db.execute(select(Document).where(Document.id == doc_id))
+    doc = result.scalar_one_or_none()
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    if doc.doc_type != "md":
+        raise HTTPException(status_code=400, detail="只能编辑 Markdown 文档")
+
+    # 保存文件
+    file_path = os.path.join(settings.UPLOAD_DIR, doc.filename)
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(request.content)
+
+    # 更新数据库
+    line_count = len(request.content.split('\n'))
+    doc.line_count = line_count
+    doc.status = "processing"
+    doc.updated_at = datetime.now()
+    await db.commit()
+
+    # 触发重新索引
+    background_tasks.add_task(doc_service.index_document, doc_id, file_path, "md")
+
+    return {
+        "success": True,
+        "message": "文档已保存并重新索引",
+        "line_count": line_count,
+        "status": "processing"
+    }
+
+
+@router.post("/api/documents/create-md", response_model=DocumentResponse)
+async def create_markdown_document(
+    request: CreateMarkdownRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
+):
+    """创建新的 Markdown 文档"""
+    # 生成文件名
+    doc_id = str(uuid.uuid4())
+    original_name = request.filename or "untitled.md"
+    if not original_name.endswith('.md'):
+        original_name += '.md'
+    safe_filename = f"{doc_id}.md"
+
+    # 保存文件
+    file_path = os.path.join(settings.UPLOAD_DIR, safe_filename)
+    content = request.content or f"# {original_name.replace('.md', '')}\n\n"
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    # 创建数据库记录
+    doc = Document(
+        id=doc_id,
+        filename=safe_filename,
+        original_name=original_name,
+        doc_type="md",
+        status="processing",
+        line_count=len(content.split('\n')),
+        folder_id=request.folder_id
+    )
+    db.add(doc)
+    await db.commit()
+
+    # 触发索引
+    background_tasks.add_task(doc_service.index_document, doc_id, file_path, "md")
+
+    return DocumentResponse(
+        id=doc.id,
+        filename=doc.original_name,
+        doc_type=doc.doc_type,
+        status=doc.status,
+        line_count=doc.line_count,
+        created_at=doc.created_at,
+        updated_at=doc.updated_at,
+        folder_id=doc.folder_id
+    )

@@ -157,3 +157,14 @@ class SystemConfigResponse(BaseModel):
 
 class SystemConfigUpdate(BaseModel):
     value: str
+
+
+# Markdown Editor Schemas
+class SaveContentRequest(BaseModel):
+    content: str
+
+
+class CreateMarkdownRequest(BaseModel):
+    filename: Optional[str] = "untitled.md"
+    content: Optional[str] = None
+    folder_id: Optional[str] = None
