@@ -12,6 +12,7 @@
   "dependencies": {
     "@ant-design/icons": "^5.5.0",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "@uiw/react-md-editor": "^4.1.1",
     "antd": "^5.22.0",
     "axios": "^1.7.0",
     "dayjs": "^1.11.13",
