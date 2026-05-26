@@ -26,6 +26,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import ReferencePanel from '@/components/ReferencePanel'
 import PDFViewer from '@/components/PDFViewer'
+import OfficeViewer from '@/components/OfficeViewer'
 
 const { Text } = Typography
 
@@ -1481,7 +1482,7 @@ const ChatPage = () => {
         )}
 
         {/* PDF Preview Toggle Button - 右侧中央折叠按钮 */}
-        <Tooltip title={showPdfOnly || showReferencePanel ? "关闭 PDF 预览" : "显示 PDF 预览"}>
+        <Tooltip title={showPdfOnly || showReferencePanel ? "关闭文档预览" : "显示文档预览"}>
           <button
             onClick={() => {
               if (showPdfOnly || showReferencePanel) {
@@ -1522,7 +1523,7 @@ const ChatPage = () => {
           >
             <FileTextOutlined style={{ fontSize: 16, color: (showPdfOnly || showReferencePanel) ? '#fff' : '#6b7280' }} />
             <span style={{ fontSize: 10, color: (showPdfOnly || showReferencePanel) ? '#fff' : '#6b7280', writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
-              PDF
+              文档
             </span>
           </button>
         </Tooltip>
@@ -1729,7 +1730,7 @@ const ChatPage = () => {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>
-                      PDF 预览
+                      文档预览
                     </div>
                     {selectedDocs.length > 1 && (
                       <select
@@ -1764,36 +1765,48 @@ const ChatPage = () => {
                     )}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <button
-                      onClick={() => setPdfPage(Math.max(1, pdfPage - 1))}
-                      disabled={pdfPage <= 1}
-                      style={{
-                        border: 'none',
-                        background: pdfPage <= 1 ? '#f3f4f6' : '#fff',
-                        cursor: pdfPage <= 1 ? 'not-allowed' : 'pointer',
-                        padding: '4px 8px',
-                        borderRadius: 4,
-                        color: pdfPage <= 1 ? '#d1d5db' : '#374151',
-                        fontSize: 12,
-                      }}
-                    >
-                      <LeftOutlined />
-                    </button>
-                    <span style={{ fontSize: 12, color: '#6b7280' }}>第 {pdfPage} 页</span>
-                    <button
-                      onClick={() => setPdfPage(pdfPage + 1)}
-                      style={{
-                        border: 'none',
-                        background: '#fff',
-                        cursor: 'pointer',
-                        padding: '4px 8px',
-                        borderRadius: 4,
-                        color: '#374151',
-                        fontSize: 12,
-                      }}
-                    >
-                      <RightOutlined />
-                    </button>
+                    {(() => {
+                      const previewDocId = pdfPreviewDocId || selectedDoc
+                      const previewDoc = documents.find(d => d.id === previewDocId)
+                      const isOfficeFile = previewDoc && ['docx', 'xlsx', 'pptx'].includes(previewDoc.doc_type)
+                      if (!isOfficeFile) {
+                        return (
+                          <>
+                            <button
+                              onClick={() => setPdfPage(Math.max(1, pdfPage - 1))}
+                              disabled={pdfPage <= 1}
+                              style={{
+                                border: 'none',
+                                background: pdfPage <= 1 ? '#f3f4f6' : '#fff',
+                                cursor: pdfPage <= 1 ? 'not-allowed' : 'pointer',
+                                padding: '4px 8px',
+                                borderRadius: 4,
+                                color: pdfPage <= 1 ? '#d1d5db' : '#374151',
+                                fontSize: 12,
+                              }}
+                            >
+                              <LeftOutlined />
+                            </button>
+                            <span style={{ fontSize: 12, color: '#6b7280' }}>第 {pdfPage} 页</span>
+                            <button
+                              onClick={() => setPdfPage(pdfPage + 1)}
+                              style={{
+                                border: 'none',
+                                background: '#fff',
+                                cursor: 'pointer',
+                                padding: '4px 8px',
+                                borderRadius: 4,
+                                color: '#374151',
+                                fontSize: 12,
+                              }}
+                            >
+                              <RightOutlined />
+                            </button>
+                          </>
+                        )
+                      }
+                      return null
+                    })()}
                     <button
                       onClick={() => {
                         setShowPdfOnly(false)
@@ -1816,11 +1829,26 @@ const ChatPage = () => {
                 </div>
                 {/* PDF Viewer */}
                 <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                  <PDFViewer
-                    url={documentApi.getFileUrl(pdfPreviewDocId || selectedDoc)}
-                    page={pdfPage}
-                    height={800}
-                  />
+                  {(() => {
+                    const previewDocId = pdfPreviewDocId || selectedDoc
+                    const previewDoc = documents.find(d => d.id === previewDocId)
+                    const isOfficeFile = previewDoc && ['docx', 'xlsx', 'pptx'].includes(previewDoc.doc_type)
+                    if (isOfficeFile) {
+                      return (
+                        <OfficeViewer
+                          fileUrl={documentApi.getFileUrl(previewDocId)}
+                          fileType={previewDoc.doc_type as 'docx' | 'xlsx' | 'pptx'}
+                        />
+                      )
+                    }
+                    return (
+                      <PDFViewer
+                        url={documentApi.getFileUrl(previewDocId)}
+                        page={pdfPage}
+                        height={800}
+                      />
+                    )
+                  })()}
                 </div>
               </div>
             )}
