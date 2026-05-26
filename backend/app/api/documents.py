@@ -3,12 +3,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
 import os
-from datetime import datetime
+import logging
+from datetime import datetime, timezone
 
 from app.models.database import get_db, Document
 from app.core.config import get_settings
 from app.services.document_service import doc_service
-from app.schemas.schemas import SaveContentRequest, CreateMarkdownRequest, DocumentResponse
+from app.schemas.schemas import SaveContentRequest, CreateMarkdownRequest
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 settings = get_settings()
@@ -30,16 +33,24 @@ async def save_document_content(
     if doc.doc_type != "md":
         raise HTTPException(status_code=400, detail="只能编辑 Markdown 文档")
 
-    # 保存文件
-    file_path = os.path.join(settings.UPLOAD_DIR, doc.filename)
-    with open(file_path, "w", encoding="utf-8") as f:
-        f.write(request.content)
+    # 保存文件（路径穿越防护）
+    upload_dir = os.path.abspath(settings.UPLOAD_DIR)
+    file_path = os.path.join(upload_dir, doc.filename)
+    if not file_path.startswith(upload_dir + os.sep) and file_path != upload_dir:
+        raise HTTPException(status_code=400, detail="非法文件路径")
+
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(request.content)
+    except OSError as e:
+        logger.error("文件写入失败: %s", e)
+        raise HTTPException(status_code=500, detail="文件保存失败")
 
     # 更新数据库
     line_count = len(request.content.split('\n'))
     doc.line_count = line_count
     doc.status = "processing"
-    doc.updated_at = datetime.now()
+    doc.updated_at = datetime.now(timezone.utc)
     await db.commit()
 
     # 触发重新索引
@@ -68,10 +79,18 @@ async def create_markdown_document(
     safe_filename = f"{doc_id}.md"
 
     # 保存文件
-    file_path = os.path.join(settings.UPLOAD_DIR, safe_filename)
+    upload_dir = os.path.abspath(settings.UPLOAD_DIR)
+    file_path = os.path.join(upload_dir, safe_filename)
+    if not file_path.startswith(upload_dir + os.sep) and file_path != upload_dir:
+        raise HTTPException(status_code=400, detail="非法文件路径")
+
     content = request.content or f"# {original_name.replace('.md', '')}\n\n"
-    with open(file_path, "w", encoding="utf-8") as f:
-        f.write(content)
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+    except OSError as e:
+        logger.error("文件写入失败: %s", e)
+        raise HTTPException(status_code=500, detail="文件创建失败")
 
     # 创建数据库记录
     doc = Document(
@@ -89,13 +108,4 @@ async def create_markdown_document(
     # 触发索引
     background_tasks.add_task(doc_service.index_document, doc_id, file_path, "md")
 
-    return DocumentResponse(
-        id=doc.id,
-        filename=doc.original_name,
-        doc_type=doc.doc_type,
-        status=doc.status,
-        line_count=doc.line_count,
-        created_at=doc.created_at,
-        updated_at=doc.updated_at,
-        folder_id=doc.folder_id
-    )
+    return doc
