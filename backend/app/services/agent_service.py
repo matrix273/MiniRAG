@@ -56,6 +56,26 @@ class TrackedPageIndexClient:
         self._log_tool_call("get_page_content", start, end)
         return result
     
+    def get_page_images(self, pages: str) -> list:
+        """Get page images and track which pages were accessed."""
+        # Parse pages like "5-7", "3,8", "12"
+        self._track_pages(pages)
+        start = time.perf_counter()
+        result = self.doc_client.get_page_images(self.doc_id, pages)
+        end = time.perf_counter()
+        self._log_tool_call("get_page_images", start, end)
+        return result
+    
+    def get_page_images_base64(self, pages: str) -> list:
+        """Get page images as base64 and track which pages were accessed."""
+        # Parse pages like "5-7", "3,8", "12"
+        self._track_pages(pages)
+        start = time.perf_counter()
+        result = self.doc_client.get_page_images_base64(self.doc_id, pages)
+        end = time.perf_counter()
+        self._log_tool_call("get_page_images_base64", start, end)
+        return result
+    
     def _track_pages(self, pages_str: str):
         """Parse and track accessed pages."""
         for part in pages_str.split(','):
@@ -127,6 +147,7 @@ def create_agent(
     system_prompt: str,
     model: Optional[OpenAIChatCompletionsModel] = None,
     include_metadata_tools: bool = True,
+    include_vision_tools: bool = False,
 ) -> Tuple[Agent, TrackedPageIndexClient]:
     """Create Agent with document tools bound to a specific doc_id.
     
@@ -134,6 +155,7 @@ def create_agent(
         include_metadata_tools: If True, includes get_document and get_document_structure tools.
                                If False, only includes get_page_content (for when structure_summary
                                is already injected into the prompt).
+        include_vision_tools: If True, includes visual tools for page image processing.
     
     Returns: (agent, tracked_client) - tracked_client can be used to get accessed pages
     """
@@ -170,6 +192,32 @@ def create_agent(
         return tracked.get_page_content(pages)
     
     tools.append(get_page_content)
+    
+    # Add vision tools if enabled
+    if include_vision_tools:
+        @function_tool
+        def get_page_images(pages: str) -> str:
+            """Get page images for visual analysis. Use tight ranges: e.g. '5-7', '3,8', '12'.
+            
+            Returns a list of page images with their page numbers. Useful for visual questions
+            about charts, diagrams, formulas, or layout.
+            """
+            import json
+            images = tracked.get_page_images(pages)
+            return json.dumps(images)
+        
+        @function_tool
+        def get_page_images_base64(pages: str) -> str:
+            """Get page images as base64 encoded strings for visual analysis.
+            
+            Returns a list of page images with their page numbers and base64 data.
+            Useful for visual questions about charts, diagrams, formulas, or layout.
+            """
+            import json
+            images = tracked.get_page_images_base64(pages)
+            return json.dumps(images)
+        
+        tools.extend([get_page_images, get_page_images_base64])
 
     if model is None:
         model = create_model()
