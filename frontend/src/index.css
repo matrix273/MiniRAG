@@ -14,3 +14,48 @@ body {
   margin: 0 auto;
   padding: 24px;
 }
+
+/* @uiw/react-md-editor 亮色主题强制覆盖 */
+[data-color-mode="light"] .w-md-editor {
+  --md-editor-background-color: #ffffff;
+  --md-editor-box-shadow-color: #d0d7de;
+  --color-canvas-default: #ffffff;
+  --color-canvas-subtle: #f6f8fa;
+  --color-fg-default: #24292f;
+  --color-fg-muted: #57606a;
+  --color-border-default: #d0d7de;
+  --color-border-muted: #d8dee4;
+  --color-neutral-muted: rgba(175, 184, 193, 0.2);
+  --color-accent-fg: #0969da;
+  background-color: #ffffff !important;
+  color: #24292f !important;
+  box-shadow: 0 0 0 1px #d0d7de !important;
+}
+
+[data-color-mode="light"] .w-md-editor .w-md-editor-toolbar {
+  background-color: #ffffff !important;
+  border-bottom: 1px solid #d0d7de !important;
+}
+
+[data-color-mode="light"] .w-md-editor .w-md-editor-toolbar ul > li > button {
+  color: #57606a !important;
+}
+
+[data-color-mode="light"] .w-md-editor .w-md-editor-toolbar ul > li > button:hover {
+  background-color: rgba(175, 184, 193, 0.2) !important;
+  color: #0969da !important;
+}
+
+[data-color-mode="light"] .w-md-editor .w-md-editor-toolbar ul > li > button.active {
+  background-color: rgba(175, 184, 193, 0.2) !important;
+  color: #0969da !important;
+}
+
+[data-color-mode="light"] .w-md-editor .w-md-editor-preview {
+  background-color: #ffffff !important;
+}
+
+[data-color-mode="light"] .w-md-editor .w-md-editor-preview .wmde-markdown {
+  background-color: #ffffff !important;
+  color: #24292f !important;
+}
