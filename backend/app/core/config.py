@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     # Model configuration
     DEFAULT_MODEL: str = "dashscope/qwen-plus"  # 注意：LiteLLM 需要 dashscope/ 前缀
     
+    # Vision model configuration (for visual RAG)
+    VISION_MODEL: str = "dashscope/qwen-vl-plus"  # 视觉语言模型
+    VISION_ENABLED: bool = False  # 是否启用视觉功能
+    
     # API Base URL - set to DashScope for Qwen, or OpenAI for GPT
     OPENAI_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     
