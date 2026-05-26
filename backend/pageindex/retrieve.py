@@ -135,3 +135,72 @@ def get_page_content(documents: dict, doc_id: str, pages: str) -> str:
         return json.dumps({'error': f'Failed to read page content: {e}'})
 
     return json.dumps(content, ensure_ascii=False)
+
+
+def get_page_images(documents: dict, doc_id: str, pages: str, output_dir: str = None, dpi: int = 150) -> str:
+    """
+    Retrieve page images for a document.
+    
+    pages format: '5-7', '3,8', or '12'
+    For PDF: pages are physical page numbers (1-indexed).
+    
+    Returns JSON list of {'page': int, 'image_path': str}.
+    """
+    doc_info = documents.get(doc_id)
+    if not doc_info:
+        return json.dumps({'error': f'Document {doc_id} not found'})
+    
+    if doc_info.get('type') != 'pdf':
+        return json.dumps({'error': 'Page images are only supported for PDF documents'})
+    
+    try:
+        page_nums = _parse_pages(pages)
+    except (ValueError, AttributeError) as e:
+        return json.dumps({'error': f'Invalid pages format: {pages!r}. Use "5-7", "3,8", or "12". Error: {e}'})
+    
+    try:
+        from .vision import pdf_pages_to_images
+        images = pdf_pages_to_images(
+            pdf_path=doc_info['path'],
+            start_page=min(page_nums),
+            end_page=max(page_nums),
+            output_dir=output_dir,
+            dpi=dpi,
+        )
+        return json.dumps(images, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({'error': f'Failed to extract page images: {e}'})
+
+
+def get_page_images_base64(documents: dict, doc_id: str, pages: str, dpi: int = 150) -> str:
+    """
+    Retrieve page images as base64 encoded strings.
+    
+    pages format: '5-7', '3,8', or '12'
+    For PDF: pages are physical page numbers (1-indexed).
+    
+    Returns JSON list of {'page': int, 'base64': str}.
+    """
+    doc_info = documents.get(doc_id)
+    if not doc_info:
+        return json.dumps({'error': f'Document {doc_id} not found'})
+    
+    if doc_info.get('type') != 'pdf':
+        return json.dumps({'error': 'Page images are only supported for PDF documents'})
+    
+    try:
+        page_nums = _parse_pages(pages)
+    except (ValueError, AttributeError) as e:
+        return json.dumps({'error': f'Invalid pages format: {pages!r}. Use "5-7", "3,8", or "12". Error: {e}'})
+    
+    try:
+        from .vision import pdf_pages_to_base64
+        images = pdf_pages_to_base64(
+            pdf_path=doc_info['path'],
+            start_page=min(page_nums),
+            end_page=max(page_nums),
+            dpi=dpi,
+        )
+        return json.dumps(images, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({'error': f'Failed to extract page images: {e}'})
