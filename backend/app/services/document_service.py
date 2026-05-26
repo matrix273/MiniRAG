@@ -210,6 +210,9 @@ class DocumentService:
             if document.doc_type == 'pdf':
                 doc_info['page_count'] = document.page_count or 0
                 doc_info['pages'] = document.pages or []
+            elif document.doc_type in ('docx', 'xlsx', 'pptx'):
+                doc_info['page_count'] = document.page_count or 0
+                doc_info['pages'] = document.pages or []
             else:  # markdown
                 doc_info['line_count'] = document.line_count or 0
             

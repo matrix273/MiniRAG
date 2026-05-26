@@ -107,7 +107,7 @@ async def upload_documents(
     db: AsyncSession = Depends(get_db)
 ):
     """Upload multiple documents (PDF or Markdown) and start indexing."""
-    allowed_extensions = {'.pdf', '.md', '.markdown'}
+    allowed_extensions = {'.pdf', '.md', '.markdown', '.docx', '.xlsx', '.pptx'}
     results = []
     errors = []
 
@@ -131,7 +131,11 @@ async def upload_documents(
         finally:
             await file.close()
 
-        doc_type = "pdf" if file_ext == ".pdf" else "md"
+        doc_type_map = {
+            '.pdf': 'pdf', '.md': 'md', '.markdown': 'md',
+            '.docx': 'docx', '.xlsx': 'xlsx', '.pptx': 'pptx',
+        }
+        doc_type = doc_type_map[file_ext]
         doc = Document(
             id=doc_id,
             filename=safe_filename,
@@ -301,7 +305,14 @@ async def get_document_file(
         raise HTTPException(status_code=404, detail="File not found")
     
     # Determine content type
-    content_type = "application/pdf" if doc.doc_type == "pdf" else "text/markdown"
+    content_type_map = {
+        'pdf': 'application/pdf',
+        'md': 'text/markdown',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    }
+    content_type = content_type_map.get(doc.doc_type, 'application/octet-stream')
     
     # Generate ETag based on file modification time
     mtime = os.path.getmtime(file_path)

@@ -123,6 +123,74 @@ class PageIndexClient:
                 'line_count': result.get('line_count', 0),
                 'structure': result['structure'],
             }
+
+        is_docx = ext == '.docx'
+        is_xlsx = ext == '.xlsx'
+        is_pptx = ext == '.pptx'
+
+        if mode == "docx" or (mode == "auto" and is_docx):
+            print(f"Indexing DOCX: {file_path}")
+            from .parsers.office_to_tree import docx_to_tree
+            result = docx_to_tree(
+                file_path,
+                model=self.model,
+                if_add_node_summary='yes',
+                if_add_node_text='yes',
+                if_add_node_id='yes',
+                if_add_doc_description='yes',
+            )
+            self.documents[doc_id] = {
+                'id': doc_id,
+                'type': 'docx',
+                'path': file_path,
+                'doc_name': result.get('doc_name', ''),
+                'doc_description': result.get('doc_description', ''),
+                'page_count': result.get('metadata', {}).get('paragraph_count', 0),
+                'structure': result['structure'],
+            }
+
+        elif mode == "xlsx" or (mode == "auto" and is_xlsx):
+            print(f"Indexing XLSX: {file_path}")
+            from .parsers.office_to_tree import xlsx_to_tree
+            result = xlsx_to_tree(
+                file_path,
+                model=self.model,
+                if_add_node_summary='yes',
+                if_add_node_text='yes',
+                if_add_node_id='yes',
+                if_add_doc_description='yes',
+            )
+            self.documents[doc_id] = {
+                'id': doc_id,
+                'type': 'xlsx',
+                'path': file_path,
+                'doc_name': result.get('doc_name', ''),
+                'doc_description': result.get('doc_description', ''),
+                'page_count': result.get('metadata', {}).get('sheet_count', 0),
+                'structure': result['structure'],
+            }
+
+        elif mode == "pptx" or (mode == "auto" and is_pptx):
+            print(f"Indexing PPTX: {file_path}")
+            from .parsers.office_to_tree import pptx_to_tree
+            result = pptx_to_tree(
+                file_path,
+                model=self.model,
+                if_add_node_summary='yes',
+                if_add_node_text='yes',
+                if_add_node_id='yes',
+                if_add_doc_description='yes',
+            )
+            self.documents[doc_id] = {
+                'id': doc_id,
+                'type': 'pptx',
+                'path': file_path,
+                'doc_name': result.get('doc_name', ''),
+                'doc_description': result.get('doc_description', ''),
+                'page_count': result.get('metadata', {}).get('slide_count', 0),
+                'structure': result['structure'],
+            }
+
         else:
             raise ValueError(f"Unsupported file format for: {file_path}")
 
@@ -144,6 +212,8 @@ class PageIndexClient:
             entry['page_count'] = doc.get('page_count')
         elif doc.get('type') == 'md':
             entry['line_count'] = doc.get('line_count')
+        elif doc.get('type') in ('docx', 'xlsx', 'pptx'):
+            entry['page_count'] = doc.get('page_count')
         return entry
 
     @staticmethod
