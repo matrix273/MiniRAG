@@ -669,6 +669,126 @@ async def send_message(
     )
 
 
+@app.post("/api/chat/{session_id}/message/stream")
+async def send_message_stream(
+    session_id: str,
+    message_data: ChatMessageCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Send a message and get AI response using streaming SSE."""
+    import json
+    import time as _time
+    from fastapi.responses import StreamingResponse
+    from sqlalchemy import select
+
+    # Get session
+    result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
+    # Get document
+    doc_ids = session.document_ids or (session.document_id and [session.document_id]) or []
+    documents = []
+    for did in doc_ids:
+        result = await db.execute(select(Document).where(Document.id == did))
+        doc = result.scalar_one_or_none()
+        if doc:
+            documents.append(doc)
+
+    # Save user message
+    user_message = ChatMessage(
+        session_id=session_id,
+        role="user",
+        content=message_data.content,
+    )
+    db.add(user_message)
+    await db.commit()
+
+    # Get chat history
+    result = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == session_id)
+        .order_by(ChatMessage.created_at)
+    )
+    history = result.scalars().all()
+    chat_history = [{"role": msg.role, "content": msg.content} for msg in history[-10:]]
+
+    # Import streaming agent
+    from app.services.agent_service import (
+        create_agent, run_agent_streaming, TrackedPageIndexClient
+    )
+    from app.services.document_service import doc_service
+
+    async def generate():
+        full_text = ""
+        citations = []
+        try:
+            if documents:
+                document = documents[0]
+                await doc_service._ensure_doc_in_client(document)
+                doc_client = doc_service.client
+
+                from app.services.prompt_service import get_active_prompt
+                agent_prompt = await get_active_prompt("agent_system")
+                rag_template = await get_active_prompt("rag_template")
+                if rag_template:
+                    agent_prompt = f"{agent_prompt}\n\n{rag_template}"
+
+                agent, tracked = create_agent(
+                    doc_client=doc_client,
+                    doc_id=document.id,
+                    system_prompt=agent_prompt,
+                )
+            else:
+                agent, tracked = create_agent(
+                    doc_client=None,
+                    doc_id="",
+                    system_prompt="你是一个有帮助的助手。",
+                )
+
+            async for event in run_agent_streaming(agent, tracked, message_data.content):
+                if event["type"] == "text_delta":
+                    full_text += str(event["content"])
+                    yield f"data: {json.dumps({'type': 'delta', 'content': event['content']})}\n\n"
+                elif event["type"] == "tool_call":
+                    yield f"data: {json.dumps({'type': 'tool_call', 'tool': event['tool']})}\n\n"
+                elif event["type"] == "done":
+                    citations = event.get("citations", [])
+                    full_text = event.get("full_text", full_text)
+                    yield f"data: {json.dumps({'type': 'done', 'citations': citations})}\n\n"
+                elif event["type"] == "error":
+                    full_text = f"Error: {event['message']}"
+                    yield f"data: {json.dumps({'type': 'error', 'message': event['message']})}\n\n"
+        except Exception as e:
+            full_text = f"Error: {str(e)}"
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        finally:
+            # Save AI response to DB
+            if full_text:
+                async with async_session() as save_db:
+                    ai_message = ChatMessage(
+                        session_id=session_id,
+                        role="assistant",
+                        content=full_text,
+                        citations=citations if citations else None,
+                    )
+                    save_db.add(ai_message)
+                    await save_db.commit()
+
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @app.put("/api/chat/{session_id}", response_model=ChatSessionResponse)
 async def update_chat_session(
     session_id: str,

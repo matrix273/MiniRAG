@@ -281,3 +281,54 @@ async def run_agent_with_guardrails(
     except (asyncio.TimeoutError, Exception) as e:
         _perf.info(f"[perf] agent_run FAILED: {_time.perf_counter()-_t_agent:.3f}s, error={type(e).__name__}")
         return "", True, []
+
+
+async def run_agent_streaming(
+    agent: Agent,
+    tracked_client: TrackedPageIndexClient,
+    query: str,
+    max_turns: int = 5,
+    timeout_seconds: int = 60,
+):
+    """Run agent in streaming mode, yielding text deltas as they arrive.
+
+    Yields dictionaries with event types:
+      {"type": "text_delta", "content": "..."}
+      {"type": "tool_call", "tool": "get_page_content", "pages": "1-3"}
+      {"type": "done", "citations": [...], "full_text": "..."}
+      {"type": "error", "message": "..."}
+    """
+    import time as _time
+    import logging
+    _perf = logging.getLogger("perf")
+
+    try:
+        _t_agent = _time.perf_counter()
+        result = Runner.run_streamed(agent, query, max_turns=max_turns)
+
+        full_text = ""
+        async for event in result.stream_events():
+            if event.type == "raw_response_event" and hasattr(event.data, "delta"):
+                delta = event.data.delta
+                if delta:
+                    full_text += delta
+                    yield {"type": "text_delta", "content": delta}
+            elif event.type == "agent_tool_call_event":
+                tool_name = event.item.name if hasattr(event.item, "name") else "unknown"
+                yield {"type": "tool_call", "tool": tool_name}
+
+        # Get final result for citations
+        final_text = result.final_output or full_text
+        accessed_pages = tracked_client.get_accessed_pages()
+
+        elapsed = _time.perf_counter() - _t_agent
+        _perf.info(f"[perf] agent_run_streaming: {elapsed:.3f}s")
+
+        yield {
+            "type": "done",
+            "citations": accessed_pages,
+            "full_text": final_text,
+        }
+    except Exception as e:
+        _perf.info(f"[perf] agent_run_streaming FAILED: {type(e).__name__}: {e}")
+        yield {"type": "error", "message": str(e)}
