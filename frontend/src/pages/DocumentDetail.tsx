@@ -4,6 +4,7 @@ import { ArrowLeftOutlined, MessageOutlined } from '@ant-design/icons'
 import { useParams, useNavigate } from 'react-router-dom'
 import { documentApi, chatApi } from '@/services/api'
 import type { Document, TreeNode } from '@/types'
+import OfficeViewer from '@/components/OfficeViewer'
 
 const { Title, Text } = Typography
 const { DirectoryTree } = Tree
@@ -129,6 +130,16 @@ const DocumentDetail = () => {
         )
       ),
     },
+    ...(['docx', 'xlsx', 'pptx'].includes(document?.doc_type || '') ? [{
+      key: 'preview',
+      label: 'Preview',
+      children: (
+        <OfficeViewer
+          fileUrl={`/api/documents/${id}/file`}
+          fileType={document!.doc_type as 'docx' | 'xlsx' | 'pptx'}
+        />
+      ),
+    }] : []),
   ]
 
   if (loading) {

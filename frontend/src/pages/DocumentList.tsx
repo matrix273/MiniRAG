@@ -16,6 +16,9 @@ import {
   FolderOpenOutlined,
   SwapOutlined,
   InboxOutlined,
+  FileWordOutlined,
+  FileExcelOutlined,
+  FilePptOutlined,
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { documentApi, folderApi } from '@/services/api'
@@ -437,8 +440,13 @@ const DocumentList = () => {
   }
 
   const getFileIcon = (docType: string) => {
-    if (docType === 'pdf') return <FilePdfOutlined style={{ color: '#ff4d4f' }} />
-    return <FileMarkdownOutlined style={{ color: '#1677ff' }} />
+    switch (docType) {
+      case 'pdf': return <FilePdfOutlined style={{ color: '#ff4d4f' }} />
+      case 'docx': return <FileWordOutlined style={{ color: '#1677ff' }} />
+      case 'xlsx': return <FileExcelOutlined style={{ color: '#52c41a' }} />
+      case 'pptx': return <FilePptOutlined style={{ color: '#fa8c16' }} />
+      default: return <FileMarkdownOutlined style={{ color: '#1677ff' }} />
+    }
   }
 
   const allKeys = useMemo(() => {
@@ -550,7 +558,7 @@ const DocumentList = () => {
               .map(d => ({
                 key: d.id,
                 title: d.filename,
-                icon: d.doc_type === 'pdf' ? <FilePdfOutlined style={{ color: '#ff4d4f' }} /> : <FileMarkdownOutlined style={{ color: '#1677ff' }} />,
+                icon: getFileIcon(d.doc_type),
                 isLeaf: true,
               })),
           ],
@@ -564,7 +572,7 @@ const DocumentList = () => {
       .map(d => ({
         key: d.id,
         title: d.filename,
-        icon: d.doc_type === 'pdf' ? <FilePdfOutlined style={{ color: '#ff4d4f' }} /> : <FileMarkdownOutlined style={{ color: '#1677ff' }} />,
+        icon: getFileIcon(d.doc_type),
         isLeaf: true,
       }))
 
@@ -705,7 +713,7 @@ const DocumentList = () => {
               />
             </div>
             <Upload.Dragger
-              accept=".pdf,.md,.markdown"
+              accept=".pdf,.md,.markdown,.docx,.xlsx,.pptx"
               showUploadList={false}
               beforeUpload={(file) => {
                 const uploadFile = { uid: file.uid, name: file.name, originFileObj: file } as UploadFile
@@ -718,7 +726,7 @@ const DocumentList = () => {
                 <InboxOutlined />
               </p>
               <p className="ant-upload-text">Click or drag files to this area</p>
-              <p className="ant-upload-hint">Support for PDF, Markdown files</p>
+              <p className="ant-upload-hint">Support for PDF, Markdown, Word, Excel, PowerPoint files</p>
             </Upload.Dragger>
             {pendingFiles.length > 0 && (
               <List
@@ -738,7 +746,14 @@ const DocumentList = () => {
                     ]}
                   >
                     <List.Item.Meta
-                      avatar={file.type?.includes('pdf') ? <FilePdfOutlined style={{ color: '#ff4d4f' }} /> : <FileMarkdownOutlined style={{ color: '#1677ff' }} />}
+                      avatar={(() => {
+                        const ext = file.name.split('.').pop()?.toLowerCase() || ''
+                        if (ext === 'pdf') return <FilePdfOutlined style={{ color: '#ff4d4f' }} />
+                        if (ext === 'docx') return <FileWordOutlined style={{ color: '#1677ff' }} />
+                        if (ext === 'xlsx') return <FileExcelOutlined style={{ color: '#52c41a' }} />
+                        if (ext === 'pptx') return <FilePptOutlined style={{ color: '#fa8c16' }} />
+                        return <FileMarkdownOutlined style={{ color: '#1677ff' }} />
+                      })()}
                       title={file.name}
                     />
                   </List.Item>
