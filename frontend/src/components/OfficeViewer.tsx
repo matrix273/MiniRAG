@@ -279,17 +279,20 @@ function XlsxViewer({ fileUrl }: { fileUrl: string }) {
           <thead>
             {/* 筛选行 */}
             {showFilters && (
-              <tr style={{ background: '#f0f5ff' }}>
+              <tr style={{ background: '#e8f4fd' }}>
                 {headers.map((_, i) => (
                   <th
                     key={`filter-${i}`}
                     style={{
-                      border: '1px solid #d9d9d9',
-                      padding: '4px 6px',
-                      background: '#f0f5ff',
+                      border: '1px solid #91d5ff',
+                      padding: '6px 6px',
+                      background: '#e8f4fd',
                       position: 'sticky',
-                      top: 26,
-                      zIndex: 1,
+                      top: 0,
+                      zIndex: 3,
+                      width: columnWidths[i],
+                      minWidth: 60,
+                      maxWidth: 300,
                     }}
                   >
                     <input
@@ -299,11 +302,13 @@ function XlsxViewer({ fileUrl }: { fileUrl: string }) {
                       placeholder="筛选..."
                       style={{
                         width: '100%',
-                        padding: '2px 4px',
-                        border: '1px solid #d9d9d9',
-                        borderRadius: 2,
-                        fontSize: 11,
+                        padding: '4px 6px',
+                        border: '1px solid #91d5ff',
+                        borderRadius: 4,
+                        fontSize: 12,
                         boxSizing: 'border-box',
+                        background: '#fff',
+                        outline: 'none',
                       }}
                     />
                   </th>
@@ -331,7 +336,7 @@ function XlsxViewer({ fileUrl }: { fileUrl: string }) {
                       fontSize: 11,
                       color: '#999',
                       position: 'sticky',
-                      top: 0,
+                      top: showFilters ? 36 : 0,
                       zIndex: 2,
                       width: columnWidths[i],
                       minWidth: 60,
@@ -355,7 +360,7 @@ function XlsxViewer({ fileUrl }: { fileUrl: string }) {
                     fontWeight: 600,
                     textAlign: 'left',
                     position: 'sticky',
-                    top: showFilters ? 52 : 26,
+                    top: showFilters ? 62 : 26,
                     zIndex: 1,
                     width: columnWidths[i],
                     minWidth: 60,
