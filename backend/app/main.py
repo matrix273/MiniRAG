@@ -1044,6 +1044,102 @@ async def inspect_vector_db():
     return {"row_count": row_count, "records": results}
 
 
+# ========== Vision Endpoints ==========
+
+@app.get("/api/documents/{doc_id}/page-images")
+async def get_page_images(
+    doc_id: str,
+    pages: str,
+    dpi: int = 150,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get page images for visual analysis."""
+    from sqlalchemy import select
+    from backend.pageindex.vision import pdf_pages_to_images
+    
+    result = await db.execute(select(Document).where(Document.id == doc_id))
+    doc = result.scalar_one_or_none()
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if doc.doc_type != "pdf":
+        raise HTTPException(status_code=400, detail="Page images are only supported for PDF documents")
+    
+    try:
+        # Parse pages string
+        page_nums = []
+        for part in pages.split(','):
+            part = part.strip()
+            if '-' in part:
+                start, end = int(part.split('-', 1)[0]), int(part.split('-', 1)[1])
+                page_nums.extend(range(start, end + 1))
+            else:
+                page_nums.append(int(part))
+        
+        if not page_nums:
+            raise HTTPException(status_code=400, detail="Invalid pages format")
+        
+        # Get page images
+        images = pdf_pages_to_images(
+            pdf_path=os.path.join(settings.UPLOAD_DIR, doc.filename),
+            start_page=min(page_nums),
+            end_page=max(page_nums),
+            dpi=dpi,
+        )
+        
+        return {"images": images}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to extract page images: {str(e)}")
+
+
+@app.get("/api/documents/{doc_id}/page-images-base64")
+async def get_page_images_base64(
+    doc_id: str,
+    pages: str,
+    dpi: int = 150,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get page images as base64 encoded strings for visual analysis."""
+    from sqlalchemy import select
+    from backend.pageindex.vision import pdf_pages_to_base64
+    
+    result = await db.execute(select(Document).where(Document.id == doc_id))
+    doc = result.scalar_one_or_none()
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if doc.doc_type != "pdf":
+        raise HTTPException(status_code=400, detail="Page images are only supported for PDF documents")
+    
+    try:
+        # Parse pages string
+        page_nums = []
+        for part in pages.split(','):
+            part = part.strip()
+            if '-' in part:
+                start, end = int(part.split('-', 1)[0]), int(part.split('-', 1)[1])
+                page_nums.extend(range(start, end + 1))
+            else:
+                page_nums.append(int(part))
+        
+        if not page_nums:
+            raise HTTPException(status_code=400, detail="Invalid pages format")
+        
+        # Get page images as base64
+        images = pdf_pages_to_base64(
+            pdf_path=os.path.join(settings.UPLOAD_DIR, doc.filename),
+            start_page=min(page_nums),
+            end_page=max(page_nums),
+            dpi=dpi,
+        )
+        
+        return {"images": images}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to extract page images: {str(e)}")
+
+
 # ========== Health Check ==========
 
 @app.get("/api/health")
