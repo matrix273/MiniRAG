@@ -72,6 +72,8 @@ function detectHeaderRowIndex(rows: string[][]): number {
   return bestIndex
 }
 
+const BATCH_SIZE = 200
+
 function XlsxViewer({ fileUrl }: { fileUrl: string }) {
   const [sheets, setSheets] = useState<RawSheetData[]>([])
   const [loading, setLoading] = useState(true)
@@ -79,7 +81,9 @@ function XlsxViewer({ fileUrl }: { fileUrl: string }) {
   const [headerRowBySheet, setHeaderRowBySheet] = useState<Record<number, number>>({})
   const [filters, setFilters] = useState<Record<number, string>>({})
   const [showFilters, setShowFilters] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(BATCH_SIZE)
   const containerRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -154,17 +158,29 @@ function XlsxViewer({ fileUrl }: { fileUrl: string }) {
   const filteredRows = getFilteredRows()
   const columnWidths = calculateColumnWidths()
 
+  // 滚动加载更多行
+  const handleScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 100) {
+      setVisibleCount((prev) => Math.min(prev + BATCH_SIZE, filteredRows.length))
+    }
+  }
+
   const handleFilterChange = (colIndex: number, value: string) => {
     setFilters((prev) => ({ ...prev, [colIndex]: value }))
+    setVisibleCount(BATCH_SIZE)
   }
 
   const clearFilters = () => {
     setFilters({})
+    setVisibleCount(BATCH_SIZE)
   }
 
   const setHeaderRow = (index: number) => {
     setHeaderRowBySheet((prev) => ({ ...prev, [activeSheet]: index }))
     setFilters({})
+    setVisibleCount(BATCH_SIZE)
   }
 
   // 可选表头行数（最多显示前 10 行供选择）
@@ -191,6 +207,7 @@ function XlsxViewer({ fileUrl }: { fileUrl: string }) {
                 onClick={() => {
                   setActiveSheet(index)
                   setFilters({})
+                  setVisibleCount(BATCH_SIZE)
                 }}
                 style={{
                   padding: '4px 12px',
@@ -269,12 +286,14 @@ function XlsxViewer({ fileUrl }: { fileUrl: string }) {
           </button>
         )}
         <span style={{ fontSize: 12, color: '#999', whiteSpace: 'nowrap' }}>
-          {filteredRows.length} / {dataRows.length} 行
+          {filteredRows.length > visibleCount
+            ? `显示 ${visibleCount} / ${filteredRows.length} 行（滚动加载更多）`
+            : `${filteredRows.length} / ${dataRows.length} 行`}
         </span>
       </div>
 
       {/* 表格内容 */}
-      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+      <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
           <thead>
             {/* 筛选行 */}
@@ -373,44 +392,47 @@ function XlsxViewer({ fileUrl }: { fileUrl: string }) {
             </tr>
           </thead>
           <tbody>
-            {filteredRows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={headers.length || 1}
-                  style={{
-                    border: '1px solid #d9d9d9',
-                    padding: '20px',
-                    textAlign: 'center',
-                    color: '#999',
-                  }}
-                >
-                  没有匹配的数据
-                </td>
-              </tr>
-            ) : (
-              filteredRows.map((row, ri) => (
-                <tr key={ri} style={{ background: ri % 2 === 0 ? '#fff' : '#fafafa' }}>
-                  {headers.map((_, ci) => (
-                    <td
-                      key={ci}
-                      style={{
-                        border: '1px solid #d9d9d9',
-                        padding: '6px 10px',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        width: columnWidths[ci],
-                        minWidth: 60,
-                        maxWidth: 300,
-                      }}
-                      title={row[ci] || ''}
-                    >
-                      {row[ci] || ''}
-                    </td>
-                  ))}
+            {(() => {
+              const visibleRows = filteredRows.slice(0, visibleCount)
+              return visibleRows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={headers.length || 1}
+                    style={{
+                      border: '1px solid #d9d9d9',
+                      padding: '20px',
+                      textAlign: 'center',
+                      color: '#999',
+                    }}
+                  >
+                    没有匹配的数据
+                  </td>
                 </tr>
-              ))
-            )}
+              ) : (
+                visibleRows.map((row, ri) => (
+                  <tr key={ri} style={{ background: ri % 2 === 0 ? '#fff' : '#fafafa' }}>
+                    {headers.map((_, ci) => (
+                      <td
+                        key={ci}
+                        style={{
+                          border: '1px solid #d9d9d9',
+                          padding: '6px 10px',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          width: columnWidths[ci],
+                          minWidth: 60,
+                          maxWidth: 300,
+                        }}
+                        title={row[ci] || ''}
+                      >
+                        {row[ci] || ''}
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              )
+            })()}
           </tbody>
         </table>
       </div>
