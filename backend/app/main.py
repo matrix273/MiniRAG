@@ -530,16 +530,23 @@ async def get_chat_messages(session_id: str, db: AsyncSession = Depends(get_db))
     )
     messages = result.scalars().all()
     
-    return [
-        ChatMessageResponse(
-            id=m.id,
-            role=m.role,
-            content=m.content,
-            citations=m.citations,
-            created_at=m.created_at,
+    normalized = []
+    for m in messages:
+        # Normalize citations: old format may be list of ints (page numbers)
+        citations = m.citations
+        if citations and isinstance(citations, list) and citations and isinstance(citations[0], int):
+            # Old format: list of page numbers -> convert to None (invalid)
+            citations = None
+        normalized.append(
+            ChatMessageResponse(
+                id=m.id,
+                role=m.role,
+                content=m.content,
+                citations=citations,
+                created_at=m.created_at,
+            )
         )
-        for m in messages
-    ]
+    return normalized
 
 
 @app.post("/api/chat/{session_id}/message", response_model=ChatMessageResponse)
@@ -723,6 +730,7 @@ async def send_message_stream(
     async def generate():
         full_text = ""
         citations = []
+        from app.services.document_service import chat_service
         try:
             if documents:
                 document = documents[0]
@@ -795,7 +803,7 @@ async def send_message_stream(
                     yield f"data: {json.dumps({'type': 'tool_call', 'tool': event['tool']})}\n\n"
                 elif event["type"] == "done":
                     citations = event.get("citations", [])
-                    full_text = event.get("full_text", full_text)
+                    full_text = str(event.get("full_text", full_text))
                     yield f"data: {json.dumps({'type': 'done', 'citations': citations})}\n\n"
                 elif event["type"] == "error":
                     full_text = f"Error: {event['message']}"
@@ -806,12 +814,26 @@ async def send_message_stream(
         finally:
             # Save AI response to DB
             if full_text:
+                # 转换 citations 格式：页码列表 -> Citation 对象列表
+                formatted_citations = None
+                if citations and documents:
+                    document = documents[0]
+                    # 使用 _extract_citations 转换格式
+                    raw_citations = chat_service._extract_citations(
+                        document, str(full_text), citations
+                    )
+                    # 移除 index 字段，确保符合 Citation 模型
+                    formatted_citations = [
+                        {k: v for k, v in c.items() if k != 'index'}
+                        for c in raw_citations
+                    ] if raw_citations else None
+
                 async with async_session() as save_db:
                     ai_message = ChatMessage(
                         session_id=session_id,
                         role="assistant",
                         content=full_text,
-                        citations=citations if citations else None,
+                        citations=formatted_citations,
                     )
                     save_db.add(ai_message)
                     await save_db.commit()
