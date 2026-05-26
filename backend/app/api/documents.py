@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from app.models.database import get_db, Document
 from app.core.config import get_settings
 from app.services.document_service import doc_service
-from app.schemas.schemas import SaveContentRequest, CreateMarkdownRequest
+from app.schemas.schemas import SaveContentRequest, CreateMarkdownRequest, DocumentResponse
 
 logger = logging.getLogger(__name__)
 
