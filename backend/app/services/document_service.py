@@ -291,12 +291,27 @@ class ChatService:
         model = create_model()
         # When structure_summary is injected, skip get_document/get_document_structure tools
         include_metadata_tools = not document.structure_summary
+        
+        # Check if vision is enabled in settings
+        vision_enabled = settings.VISION_ENABLED if hasattr(settings, 'VISION_ENABLED') else False
+        
+        # Add vision instructions to prompt if vision is enabled
+        if vision_enabled:
+            agent_prompt += (
+                "\n\nVISUAL MODE: This system supports visual analysis of PDF pages. "
+                "When you need to analyze charts, diagrams, formulas, or visual layouts, "
+                "use the get_page_images() or get_page_images_base64() tools to get page images. "
+                "Then analyze the images to answer visual questions. "
+                "Example: get_page_images(pages='5-7') to get images of pages 5-7."
+            )
+        
         agent, tracked_client = create_agent(
             doc_client=self.doc_service.client,
             doc_id=document.id,
             system_prompt=agent_prompt,
             model=model,
             include_metadata_tools=include_metadata_tools,
+            include_vision_tools=vision_enabled,
         )
 
         answer, is_fallback, accessed_pages = await run_agent_with_guardrails(
