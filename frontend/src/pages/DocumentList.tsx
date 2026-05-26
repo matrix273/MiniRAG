@@ -19,6 +19,7 @@ import {
   FileWordOutlined,
   FileExcelOutlined,
   FilePptOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { documentApi, folderApi } from '@/services/api'
@@ -506,13 +507,21 @@ const DocumentList = () => {
             View
           </Button>
 
+          <Button
+            icon={<DownloadOutlined />}
+            href={documentApi.getFileUrl(record.id)}
+            download
+            disabled={record.status !== 'completed'}
+          >
+            Download
+          </Button>
+
           {record.doc_type === 'md' && (
             <Button
-              type="link"
-              size="small"
+              icon={<EditOutlined />}
               onClick={() => navigate(`/documents/${record.id}/edit`)}
             >
-              编辑
+              Edit
             </Button>
           )}
 
