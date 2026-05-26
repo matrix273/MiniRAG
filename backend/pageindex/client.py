@@ -32,7 +32,7 @@ class PageIndexClient:
 
     For agent-based QA, see examples/agentic_vectorless_rag_demo.py.
     """
-    def __init__(self, api_key: str = None, model: str = None, retrieve_model: str = None, workspace: str = None):
+    def __init__(self, api_key: str = None, model: str = None, retrieve_model: str = None, workspace: str = None, vision_model: str = None, vision_enabled: bool = False):
         if api_key:
             os.environ["OPENAI_API_KEY"] = api_key
         elif not os.getenv("OPENAI_API_KEY") and os.getenv("CHATGPT_API_KEY"):
@@ -46,6 +46,8 @@ class PageIndexClient:
         opt = ConfigLoader().load(overrides or None)
         self.model = opt.model
         self.retrieve_model = _normalize_retrieve_model(opt.retrieve_model or self.model)
+        self.vision_model = vision_model or "dashscope/qwen-vl-plus"
+        self.vision_enabled = vision_enabled
         if self.workspace:
             self.workspace.mkdir(parents=True, exist_ok=True)
         self.documents = {}
@@ -232,3 +234,90 @@ class PageIndexClient:
         if self.workspace:
             self._ensure_doc_loaded(doc_id)
         return get_page_content(self.documents, doc_id, pages)
+    
+    def get_page_images(self, doc_id: str, pages: str, output_dir: str = None, dpi: int = 150) -> list:
+        """
+        Get page images for the given pages string.
+        
+        Args:
+            doc_id: Document ID
+            pages: Pages string (e.g. '5-7', '3,8', '12')
+            output_dir: Directory to save images (default: temp directory)
+            dpi: Image resolution (dots per inch)
+        
+        Returns:
+            List of dicts with page number and image path
+        """
+        from .vision import pdf_pages_to_images
+        
+        doc_info = self.documents.get(doc_id)
+        if not doc_info:
+            return []
+        
+        if doc_info.get('type') != 'pdf':
+            return []
+        
+        # Parse pages string
+        page_nums = self._parse_pages_string(pages)
+        if not page_nums:
+            return []
+        
+        # Convert pages to images
+        return pdf_pages_to_images(
+            pdf_path=doc_info['path'],
+            start_page=min(page_nums),
+            end_page=max(page_nums),
+            output_dir=output_dir,
+            dpi=dpi,
+        )
+    
+    def get_page_images_base64(self, doc_id: str, pages: str, dpi: int = 150) -> list:
+        """
+        Get page images as base64 encoded strings.
+        
+        Args:
+            doc_id: Document ID
+            pages: Pages string (e.g. '5-7', '3,8', '12')
+            dpi: Image resolution (dots per inch)
+        
+        Returns:
+            List of dicts with page number and base64 encoded image
+        """
+        from .vision import pdf_pages_to_base64
+        
+        doc_info = self.documents.get(doc_id)
+        if not doc_info:
+            return []
+        
+        if doc_info.get('type') != 'pdf':
+            return []
+        
+        # Parse pages string
+        page_nums = self._parse_pages_string(pages)
+        if not page_nums:
+            return []
+        
+        # Convert pages to base64
+        return pdf_pages_to_base64(
+            pdf_path=doc_info['path'],
+            start_page=min(page_nums),
+            end_page=max(page_nums),
+            dpi=dpi,
+        )
+    
+    def _parse_pages_string(self, pages: str) -> list:
+        """Parse pages string like '5-7', '3,8', or '12' into a sorted list of ints."""
+        result = []
+        for part in pages.split(','):
+            part = part.strip()
+            if '-' in part:
+                start, end = int(part.split('-', 1)[0].strip()), int(part.split('-', 1)[1].strip())
+                if start > end:
+                    continue
+                result.extend(range(start, end + 1))
+            else:
+                try:
+                    result.append(int(part))
+                except ValueError:
+                    continue
+        return sorted(set(result))
