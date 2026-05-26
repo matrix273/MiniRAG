@@ -19,6 +19,7 @@ import {
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { documentApi, folderApi } from '@/services/api'
+import CreateMarkdownModal from '@/components/CreateMarkdownModal'
 import type { Document, Folder } from '@/types'
 import dayjs from 'dayjs'
 
@@ -61,6 +62,7 @@ const DocumentList = () => {
   const [uploadModalOpen, setUploadModalOpen] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<UploadFile[]>([])
   const [uploadFolderId, setUploadFolderId] = useState<string | null>(null)
+  const [showCreateModal, setShowCreateModal] = useState(false)
 
   const prevStatusesRef = useRef<Record<string, string>>({})
 
@@ -496,6 +498,16 @@ const DocumentList = () => {
             View
           </Button>
 
+          {record.doc_type === 'md' && (
+            <Button
+              type="link"
+              size="small"
+              onClick={() => navigate(`/documents/${record.id}/edit`)}
+            >
+              编辑
+            </Button>
+          )}
+
           <Tooltip title="Reprocess with current AI model">
             <Button
               icon={<ReloadOutlined />}
@@ -659,6 +671,9 @@ const DocumentList = () => {
               <Button type="primary" icon={<UploadOutlined />} loading={uploading} onClick={showUploadModal}>
                 Upload
               </Button>
+              <Button type="primary" onClick={() => setShowCreateModal(true)}>
+                创建 Markdown
+              </Button>
             </Space>
           </div>
 
@@ -744,6 +759,13 @@ const DocumentList = () => {
             }}
           />
         </Card>
+
+        <CreateMarkdownModal
+          visible={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          folders={folders}
+          selectedFolderId={selectedFolderId}
+        />
       </Content>
     </Layout>
   )

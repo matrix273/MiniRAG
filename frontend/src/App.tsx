@@ -13,6 +13,7 @@ import LandingPage from './pages/LandingPage'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import AdminPage from './pages/AdminPage'
+import DocumentEdit from './pages/DocumentEdit'
 import { healthApi } from '@/services/api'
 import { authApi } from '@/services/authApi'
 
@@ -119,6 +120,7 @@ function AppContent() {
           <Route path="/register" element={<Register />} />
           <Route path="/documents" element={<ProtectedRoute><DocumentList /></ProtectedRoute>} />
           <Route path="/documents/:id" element={<ProtectedRoute><DocumentDetail /></ProtectedRoute>} />
+          <Route path="/documents/:id/edit" element={<ProtectedRoute><DocumentEdit /></ProtectedRoute>} />
           <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><PromptConfigPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><AdminPage /></ProtectedRoute>} />
