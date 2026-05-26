@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Button, Space, Typography, message, Spin, Tooltip } from 'antd'
 import { ArrowLeftOutlined, SaveOutlined, FileTextOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons'
 import MDEditor from '@uiw/react-md-editor'
+import '@uiw/react-md-editor/markdown-editor.css'
 import { documentApi } from '@/services/api'
 import type { Document } from '@/types'
 
@@ -86,7 +87,7 @@ const DocumentEdit: React.FC = () => {
       {/* 头部工具栏 */}
       <Card
         size="small"
-        style={{ marginBottom: 8, backgroundColor: isDark ? '#2d2d2d' : '#fff', borderColor: isDark ? '#404040' : '#f0f0f0' }}
+        style={{ marginBottom: 8, backgroundColor: '#fff', borderColor: '#f0f0f0' }}
         bodyStyle={{ padding: '8px 16px' }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -130,7 +131,7 @@ const DocumentEdit: React.FC = () => {
       </Card>
 
       {/* 编辑器区域 */}
-      <div style={{ flex: 1, overflow: 'hidden' }}>
+      <div style={{ flex: 1, overflow: 'hidden' }} data-color-mode={isDark ? "dark" : "light"} data-dark-mode={isDark ? "dark" : "light"}>
         <MDEditor
           value={content}
           onChange={(value) => setContent(value || '')}
