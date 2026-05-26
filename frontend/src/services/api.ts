@@ -126,6 +126,18 @@ export const documentApi = {
   move: async (docId: string, folderId: string | null): Promise<void> => {
     await api.put(`/documents/${docId}/move`, { name: '', parent_id: folderId })
   },
+
+  // Save Markdown document content
+  saveContent: async (docId: string, content: string): Promise<{ success: boolean; message: string; line_count: number; status: string }> => {
+    const response = await api.put(`/documents/${docId}/content`, { content })
+    return response.data
+  },
+
+  // Create new Markdown document
+  createMarkdown: async (data: { filename: string; content?: string; folder_id?: string | null }): Promise<Document> => {
+    const response = await api.post('/documents/create-md', data)
+    return response.data
+  },
 }
 
 // Chat
