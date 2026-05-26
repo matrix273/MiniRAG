@@ -735,10 +735,50 @@ async def send_message_stream(
                 if rag_template:
                     agent_prompt = f"{agent_prompt}\n\n{rag_template}"
 
+                # 添加文档上下文信息（与 query_document 保持一致）
+                agent_prompt += f"\n\nDocument: {document.original_name}"
+                if document.doc_description:
+                    agent_prompt += f"\nDescription: {document.doc_description}"
+                if document.page_count:
+                    agent_prompt += f"\nPages: {document.page_count}"
+                
+                # 注入预计算的结构摘要
+                if document.structure_summary:
+                    agent_prompt += f"\n\nDocument Structure:\n{document.structure_summary}"
+                    agent_prompt += (
+                        "\n\nIMPORTANT: Document metadata and structure are already provided above. "
+                        "You ONLY have access to the get_page_content() tool. "
+                        "Call get_page_content(pages=\"5-7\") with tight page ranges to read specific content. "
+                        "Do NOT attempt to call get_document() or get_document_structure() — they are not available."
+                    )
+
+                # 添加聊天历史
+                if chat_history:
+                    history_text = "\n".join(
+                        f"{msg.get('role', 'user')}: {msg.get('content', '')}"
+                        for msg in chat_history[-5:]
+                    )
+                    agent_prompt += f"\n\nChat history:\n{history_text}"
+
+                # 检查是否启用视觉功能
+                from app.core.config import get_settings
+                _settings = get_settings()
+                vision_enabled = _settings.VISION_ENABLED if hasattr(_settings, 'VISION_ENABLED') else False
+                if vision_enabled:
+                    agent_prompt += (
+                        "\n\nVISUAL MODE: This system supports visual analysis of PDF pages. "
+                        "When you need to analyze charts, diagrams, formulas, or visual layouts, "
+                        "use the get_page_images() or get_page_images_base64() tools to get page images. "
+                        "Then analyze the images to answer visual questions."
+                    )
+
+                include_metadata_tools = not document.structure_summary
                 agent, tracked = create_agent(
                     doc_client=doc_client,
                     doc_id=document.id,
                     system_prompt=agent_prompt,
+                    include_metadata_tools=include_metadata_tools,
+                    include_vision_tools=vision_enabled,
                 )
             else:
                 agent, tracked = create_agent(
