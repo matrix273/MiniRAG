@@ -76,6 +76,37 @@ def _get_md_page_content(doc_info: dict, page_nums: list[int]) -> list[dict]:
     return results
 
 
+def _get_office_page_content(doc_info: dict, page_nums: list[int]) -> list[dict]:
+    """
+    For Office documents (docx, xlsx, pptx), return the entire content when any page is requested.
+    These files don't have traditional pages - they have sections/sheets/slides.
+    We treat the entire file as one 'page' for simplicity.
+    """
+    # For Office files, return the entire structure text as page 1
+    structure = doc_info.get('structure', [])
+    if not structure:
+        return []
+    
+    # Collect all text from the structure
+    all_text = []
+    def _traverse(nodes):
+        for node in nodes:
+            text = node.get('text', '')
+            if text:
+                all_text.append(text)
+            if node.get('nodes'):
+                _traverse(node['nodes'])
+    
+    _traverse(structure)
+    
+    # If any page is requested, return the full content as page 1
+    # Accept any page number (0 or 1) since Office files don't have traditional pages
+    if page_nums:
+        return [{'page': 1, 'content': '\n\n'.join(all_text)}]
+    
+    return []
+
+
 # ── Tool functions ────────────────────────────────────────────────────────────
 
 def get_document(documents: dict, doc_id: str) -> str:
@@ -90,8 +121,11 @@ def get_document(documents: dict, doc_id: str) -> str:
         'type': doc_info.get('type', ''),
         'status': 'completed',
     }
-    if doc_info.get('type') == 'pdf':
+    doc_type = doc_info.get('type', '')
+    if doc_type == 'pdf':
         result['page_count'] = _count_pages(doc_info)
+    elif doc_type in ('docx', 'xlsx', 'pptx'):
+        result['page_count'] = doc_info.get('page_count', 0)
     else:
         result['line_count'] = doc_info.get('line_count', 0)
     return json.dumps(result)
@@ -127,8 +161,11 @@ def get_page_content(documents: dict, doc_id: str, pages: str) -> str:
         return json.dumps({'error': f'Invalid pages format: {pages!r}. Use "5-7", "3,8", or "12". Error: {e}'})
 
     try:
-        if doc_info.get('type') == 'pdf':
+        doc_type = doc_info.get('type', '')
+        if doc_type == 'pdf':
             content = _get_pdf_page_content(doc_info, page_nums)
+        elif doc_type in ('docx', 'xlsx', 'pptx'):
+            content = _get_office_page_content(doc_info, page_nums)
         else:
             content = _get_md_page_content(doc_info, page_nums)
     except Exception as e:
