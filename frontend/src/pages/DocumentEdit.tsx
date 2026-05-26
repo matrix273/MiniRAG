@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Button, Space, Typography, message, Spin, Tooltip } from 'antd'
-import { ArrowLeftOutlined, SaveOutlined, FileTextOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, SaveOutlined, FileTextOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons'
 import MDEditor from '@uiw/react-md-editor'
 import { documentApi } from '@/services/api'
 import type { Document } from '@/types'
@@ -16,6 +16,7 @@ const DocumentEdit: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
+  const [isDark, setIsDark] = useState(false)
 
   useEffect(() => {
     loadDocument()
@@ -81,11 +82,11 @@ const DocumentEdit: React.FC = () => {
   }
 
   return (
-    <div style={{ height: 'calc(100vh - 112px)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: 'calc(100vh - 112px)', display: 'flex', flexDirection: 'column', backgroundColor: isDark ? '#1e1e1e' : '#f5f5f5', color: isDark ? '#fff' : '#000', transition: 'background-color 0.3s, color 0.3s' }}>
       {/* 头部工具栏 */}
       <Card
         size="small"
-        style={{ marginBottom: 8 }}
+        style={{ marginBottom: 8, backgroundColor: isDark ? '#2d2d2d' : '#fff', borderColor: isDark ? '#404040' : '#f0f0f0' }}
         bodyStyle={{ padding: '8px 16px' }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -103,6 +104,12 @@ const DocumentEdit: React.FC = () => {
           </Space>
 
           <Space>
+            <Tooltip title={isDark ? "切换到亮色模式" : "切换到暗色模式"}>
+              <Button
+                icon={isDark ? <BulbFilled /> : <BulbOutlined />}
+                onClick={() => setIsDark(!isDark)}
+              />
+            </Tooltip>
             {lastSaved && (
               <span style={{ color: '#999', fontSize: 12 }}>
                 最后保存: {lastSaved.toLocaleTimeString()}
@@ -130,13 +137,14 @@ const DocumentEdit: React.FC = () => {
           height="100%"
           preview="live"
           visibleDragbar={true}
+          theme={isDark ? "dark" : "light"}
         />
       </div>
 
       {/* 状态栏 */}
       <Card
         size="small"
-        style={{ marginTop: 8 }}
+        style={{ marginTop: 8, backgroundColor: isDark ? '#2d2d2d' : '#fff', borderColor: isDark ? '#404040' : '#f0f0f0' }}
         bodyStyle={{ padding: '4px 16px' }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', color: '#666', fontSize: 12 }}>
