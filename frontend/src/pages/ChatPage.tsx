@@ -938,9 +938,43 @@ const ChatPage = () => {
     // 检查是否是第一条消息（用于自动重命名）
     const isFirstMessage = messages.length === 0
 
+    // 创建一个临时的 AI 消息，用于流式更新
+    const aiMsgId = Date.now().toString() + '-ai'
+    const aiMsg: Message = {
+      id: aiMsgId,
+      role: 'assistant',
+      content: '',
+      created_at: new Date().toISOString(),
+    }
+    setMessages(prev => [...prev, aiMsg])
+
     try {
-      const response = await chatApi.sendMessage(currentSession, inputMessage)
-      setMessages(prev => [...prev, response as Message])
+      await chatApi.sendMessageStream(
+        currentSession,
+        inputMessage,
+        // onDelta: 收到文本增量
+        (text) => {
+          setMessages(prev => prev.map(msg => 
+            msg.id === aiMsgId 
+              ? { ...msg, content: msg.content + text }
+              : msg
+          ))
+        },
+        // onToolCall: 工具调用
+        (tool) => {
+          console.log('Tool call:', tool)
+        },
+        // onDone: 完成
+        (citations) => {
+          console.log('Done, citations:', citations)
+        },
+        // onError: 错误
+        (error) => {
+          message.error(error)
+          // 移除空的 AI 消息
+          setMessages(prev => prev.filter(msg => msg.id !== aiMsgId))
+        },
+      )
       
       // 自动重命名会话（类似 ChatGPT）
       // 只在第一条消息时自动重命名
@@ -952,6 +986,8 @@ const ChatPage = () => {
       }
     } catch (error) {
       message.error('Failed to send message')
+      // 移除空的 AI 消息
+      setMessages(prev => prev.filter(msg => msg.id !== aiMsgId))
     } finally {
       setSending(false)
     }

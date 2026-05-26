@@ -308,11 +308,17 @@ async def run_agent_streaming(
 
         full_text = ""
         async for event in result.stream_events():
-            if event.type == "raw_response_event" and hasattr(event.data, "delta"):
-                delta = event.data.delta
-                if delta:
-                    full_text += delta
-                    yield {"type": "text_delta", "content": delta}
+            # 只处理文本增量事件，跳过函数调用参数等其他事件
+            if event.type == "raw_response_event":
+                event_data = event.data
+                event_data_type = getattr(event_data, "type", None)
+                # 检查是否是文本增量事件 (ResponseTextDeltaEvent)
+                # 事件类型是 response.output_text.delta
+                if hasattr(event_data, 'delta') and event_data_type == "response.output_text.delta":
+                    delta = event_data.delta
+                    if delta:
+                        full_text += delta
+                        yield {"type": "text_delta", "content": delta}
             elif event.type == "agent_tool_call_event":
                 tool_name = event.item.name if hasattr(event.item, "name") else "unknown"
                 yield {"type": "tool_call", "tool": tool_name}

@@ -172,6 +172,86 @@ export const chatApi = {
     return response.data
   },
 
+  // Send message with streaming (SSE)
+  sendMessageStream: async (
+    sessionId: string,
+    content: string,
+    onDelta: (text: string) => void,
+    onToolCall?: (tool: string) => void,
+    onDone?: (citations: number[]) => void,
+    onError?: (error: string) => void,
+  ): Promise<void> => {
+    const token = localStorage.getItem('access_token')
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+
+    const response = await fetch(`${API_BASE_URL}/chat/${sessionId}/message/stream`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ content }),
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      onError?.(error)
+      return
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      onError?.('No response body')
+      return
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') {
+              return
+            }
+            try {
+              const event = JSON.parse(data)
+              switch (event.type) {
+                case 'delta':
+                  onDelta(event.content)
+                  break
+                case 'tool_call':
+                  onToolCall?.(event.tool)
+                  break
+                case 'done':
+                  onDone?.(event.citations)
+                  break
+                case 'error':
+                  onError?.(event.message)
+                  break
+              }
+            } catch (e) {
+              // Ignore parse errors for incomplete lines
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  },
+
   // Create auto-inference chat session (no document selection needed)
   createAutoSession: async (title?: string): Promise<ChatSession> => {
     const response = await api.post('/chat/auto', null, { params: { title: title || 'New Chat' } })
