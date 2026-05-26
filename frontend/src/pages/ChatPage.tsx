@@ -14,7 +14,6 @@ import {
   RightOutlined,
   MenuOutlined,
   CloseOutlined,
-  ThunderboltOutlined,
   ExclamationCircleOutlined,
 } from '@ant-design/icons'
 import { chatApi, documentApi, folderApi, vectorDbApi } from '@/services/api'
@@ -266,7 +265,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
   const { message } = App.useApp()
   const isUser = msg.role === 'user'
   const [copied, setCopied] = useState(false)
-  const [hovered, setHovered] = useState(false)
+
 
   // 预处理 markdown 内容：确保 $$ 块级公式被 remark-math 正确识别为 flow math
   const preprocessMarkdown = (content: string): string => {
@@ -288,8 +287,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
 
   return (
     <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex',
         flexDirection: 'row',

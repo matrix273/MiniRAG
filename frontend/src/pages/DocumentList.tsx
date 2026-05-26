@@ -25,8 +25,6 @@ import dayjs from 'dayjs'
 const { Title } = Typography
 const { Sider, Content } = Layout
 
-const getFileKey = (file: File) => `${file.name}-${file.size}`
-
 function collectAllKeys(folders: Folder[]): string[] {
   const keys: string[] = []
   for (const f of folders) {

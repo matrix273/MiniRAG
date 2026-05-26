@@ -189,7 +189,7 @@ export default function AdminPage() {
         onCancel={() => setRoleModalOpen(false)}
       >
         <Form form={roleForm} layout="vertical">
-          <Form.Item label="角色名称" name="name" rules={[{ required: true, message: '请输入角色名称' }]} disabled={!!selectedRole}>
+          <Form.Item label="角色名称" name="name" rules={[{ required: true, message: '请输入角色名称' }]}>
             <Input placeholder="例如: moderator" />
           </Form.Item>
           <Form.Item label="描述" name="description">
