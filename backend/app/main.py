@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -284,6 +284,7 @@ async def get_document_page_content(
 @app.get("/api/documents/{doc_id}/file")
 async def get_document_file(
     doc_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """Stream the original document file for PDF preview."""
@@ -318,6 +319,14 @@ async def get_document_file(
     mtime = os.path.getmtime(file_path)
     etag = hashlib.md5(f"{doc_id}-{mtime}".encode()).hexdigest()
     
+    # Handle If-None-Match: return 304 Not Modified if ETag matches
+    if_none_match = request.headers.get("if-none-match")
+    if if_none_match and if_none_match.strip('"') == etag:
+        return JSONResponse(status_code=304, content=None, headers={
+            "ETag": f'"{etag}"',
+            "Cache-Control": "public, max-age=3600",
+        })
+    
     # Use FileResponse for faster delivery (with caching)
     return FileResponse(
         file_path,
@@ -326,7 +335,7 @@ async def get_document_file(
         headers={
             "Cache-Control": "public, max-age=3600",
             "Content-Disposition": f"inline; filename={doc.filename}",
-            "ETag": etag,
+            "ETag": f'"{etag}"',
             "Last-Modified": str(mtime)
         }
     )
