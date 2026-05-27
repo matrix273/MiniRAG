@@ -134,10 +134,12 @@ const DocumentDetail = () => {
       key: 'preview',
       label: 'Preview',
       children: (
-        <OfficeViewer
-          fileUrl={`/api/documents/${id}/file`}
-          fileType={document!.doc_type as 'docx' | 'xlsx' | 'pptx'}
-        />
+        <div style={{ height: 'calc(100vh - 280px)', minHeight: 400, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <OfficeViewer
+            fileUrl={`/api/documents/${id}/file`}
+            fileType={document!.doc_type as 'docx' | 'xlsx' | 'pptx'}
+          />
+        </div>
       ),
     }] : []),
   ]
