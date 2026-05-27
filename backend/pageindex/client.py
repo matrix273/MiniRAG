@@ -124,11 +124,7 @@ class PageIndexClient:
                 'structure': result['structure'],
             }
 
-        is_docx = ext == '.docx'
-        is_xlsx = ext == '.xlsx'
-        is_pptx = ext == '.pptx'
-
-        if mode == "docx" or (mode == "auto" and is_docx):
+        elif mode == "docx" or (mode == "auto" and ext == '.docx'):
             print(f"Indexing DOCX: {file_path}")
             from .parsers.office_to_tree import docx_to_tree
             result = docx_to_tree(
@@ -149,7 +145,7 @@ class PageIndexClient:
                 'structure': result['structure'],
             }
 
-        elif mode == "xlsx" or (mode == "auto" and is_xlsx):
+        elif mode == "xlsx" or (mode == "auto" and ext == '.xlsx'):
             print(f"Indexing XLSX: {file_path}")
             from .parsers.office_to_tree import xlsx_to_tree
             result = xlsx_to_tree(
