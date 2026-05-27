@@ -1,38 +1,69 @@
-import { useRef, useCallback, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
+import { fileCache } from '@/utils/fileCache'
 
 interface PDFViewerProps {
   url: string
   page: number
   height?: number
   containerWidth?: number
+  docId?: string
 }
 
-export default function PDFViewer({ url, page }: PDFViewerProps) {
+function extractDocId(url: string): string | undefined {
+  const match = url.match(/\/api\/documents\/([^/]+)\/file/)
+  return match?.[1]
+}
+
+export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const [objectUrl, setObjectUrl] = useState<string>(`${url}#page=${page}&zoom=width`)
+  const resolvedDocId = docId || extractDocId(url)
 
-  // 只在页面变化时更新 iframe URL，避免重复加载
-  // 使用 zoom=width 实现宽度自适应
-  const iframeUrl = `${url}#page=${page}&zoom=width`
-
-  // 刷新 PDF iframe - 使用时间戳强制刷新
-  const refreshPdf = useCallback(() => {
-    if (iframeRef.current) {
-      // 构建新的 URL，使用原始 URL + 时间戳
-      const baseUrl = url
-      const hash = `#page=${page}&zoom=width`
-      const timestamp = Date.now()
-      iframeRef.current.src = `${baseUrl}?_t=${timestamp}${hash}`
-    }
-  }, [url, page])
-
-  // 暴露刷新方法给父组件
+  // 加载文件并创建 object URL 以利用缓存
   useEffect(() => {
-    (window as any).__pdfViewerRefresh = refreshPdf
+    const loadPdf = async () => {
+      if (!resolvedDocId) {
+        // 没有 docId，直接使用原始 URL
+        setObjectUrl(`${url}#page=${page}&zoom=width`)
+        return
+      }
+
+      try {
+        const blob = await fileCache.fetch(resolvedDocId, url)
+        const objUrl = URL.createObjectURL(blob)
+        setObjectUrl(`${objUrl}#page=${page}&zoom=width`)
+
+        // 清理之前的 object URL
+        return () => {
+          URL.revokeObjectURL(objUrl)
+        }
+      } catch {
+        // 缓存加载失败，回退到原始 URL
+        setObjectUrl(`${url}#page=${page}&zoom=width`)
+      }
+    }
+
+    loadPdf()
+  }, [url, page, resolvedDocId])
+
+  // 刷新 PDF iframe - 使用缓存的版本
+  useEffect(() => {
+    (window as any).__pdfViewerRefresh = () => {
+      if (iframeRef.current && objectUrl) {
+        // 重新加载 iframe 以修复布局，但使用同一个 objectUrl（来自缓存）
+        const currentSrc = iframeRef.current.src
+        iframeRef.current.src = 'about:blank'
+        setTimeout(() => {
+          if (iframeRef.current) {
+            iframeRef.current.src = currentSrc
+          }
+        }, 50)
+      }
+    }
     return () => {
       delete (window as any).__pdfViewerRefresh
     }
-  }, [refreshPdf])
+  }, [objectUrl])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
