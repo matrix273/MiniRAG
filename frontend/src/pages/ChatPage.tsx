@@ -1904,6 +1904,7 @@ const ChatPage = () => {
                         <OfficeViewer
                           fileUrl={documentApi.getFileUrl(previewDocId)}
                           fileType={previewDoc.doc_type as 'docx' | 'xlsx' | 'pptx'}
+                          docId={previewDocId}
                         />
                       )
                     }

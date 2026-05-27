@@ -138,6 +138,7 @@ const DocumentDetail = () => {
           <OfficeViewer
             fileUrl={`/api/documents/${id}/file`}
             fileType={document!.doc_type as 'docx' | 'xlsx' | 'pptx'}
+            docId={id}
           />
         </div>
       ),

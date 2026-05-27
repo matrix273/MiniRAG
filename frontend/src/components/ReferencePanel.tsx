@@ -23,6 +23,7 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
   const [loading, setLoading] = useState(false)
   const [fileUrl, setFileUrl] = useState<string>('')
   const [docType, setDocType] = useState<string>('')
+  const [currentDocId, setCurrentDocId] = useState<string>('')
   const [fileUrlCache, setFileUrlCache] = useState<Record<string, { url: string, type: string }>>({})
 
   const selectedCitation = selectedIndex !== null ? citations[selectedIndex] : null
@@ -32,6 +33,7 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
     if (!selectedCitation) {
       setFileUrl('')
       setDocType('')
+      setCurrentDocId('')
       return
     }
 
@@ -40,6 +42,7 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
     if (!targetDocId) {
       setFileUrl('')
       setDocType('')
+      setCurrentDocId('')
       return
     }
 
@@ -60,6 +63,7 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
             setFileUrlCache(prev => ({ ...prev, [targetDocId]: { url: fileUrl, type: response.doc_type || 'pdf' } }))
           }
         }
+        setCurrentDocId(targetDocId)
       } catch (error) {
         console.error('Failed to fetch page content:', error)
       } finally {
@@ -178,6 +182,7 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
                       <OfficeViewer
                         fileUrl={fileUrl}
                         fileType={docType as 'docx' | 'xlsx' | 'pptx'}
+                        docId={currentDocId}
                       />
                     ) : (
                       <PDFViewer
