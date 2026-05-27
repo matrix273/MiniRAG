@@ -1940,7 +1940,7 @@ const ChatPage = () => {
                       <GenericFileViewer
                         fileUrl={documentApi.getFileUrl(previewDocId)}
                         fileType={docType}
-                        filename={previewDoc?.original_name || 'file'}
+                        filename={previewDoc?.filename || 'file'}
                       />
                     )
                   })()}

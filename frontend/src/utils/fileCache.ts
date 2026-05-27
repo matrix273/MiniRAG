@@ -63,7 +63,7 @@ class FileCache {
    * Get or create a cached object URL for direct iframe/src usage.
    * This avoids creating new object URLs on every render.
    */
-  getObjectUrl(docId: string, url: string): string | null {
+  getObjectUrl(docId: string, _url?: string): string | null {
     const key = this.getKey(docId)
     const cached = this.cache.get(key)
     if (cached?.objectUrl) {
