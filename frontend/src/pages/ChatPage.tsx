@@ -15,6 +15,7 @@ import {
   MenuOutlined,
   CloseOutlined,
   ExclamationCircleOutlined,
+  PauseOutlined,
 } from '@ant-design/icons'
 import { chatApi, documentApi, folderApi, vectorDbApi } from '@/services/api'
 import type { ChatSession, Document, Folder } from '@/types'
@@ -754,6 +755,7 @@ const ChatPage = () => {
   // PDF 面板状态 - 用于无引用时显示 PDF
   const [showPdfOnly, setShowPdfOnly] = useState(false)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const saved = localStorage.getItem('chatSidebarCollapsed')
     return saved ? JSON.parse(saved) : false
@@ -921,6 +923,14 @@ const ChatPage = () => {
     }
   }
 
+  const handleStopStreaming = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    setSending(false)
+  }
+
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || !currentSession) return
 
@@ -934,6 +944,10 @@ const ChatPage = () => {
     setMessages(prev => [...prev, userMsg])
     setInputMessage('')
     setSending(true)
+
+    // 创建 AbortController 用于取消流式请求
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
 
     // 检查是否是第一条消息（用于自动重命名）
     const isFirstMessage = messages.length === 0
@@ -973,6 +987,9 @@ const ChatPage = () => {
           message.error(error)
           // 移除空的 AI 消息
           setMessages(prev => prev.filter(msg => msg.id !== aiMsgId))
+        },
+        // signal: 用于取消流式请求
+        abortController.signal,
         },
       )
       
@@ -1659,20 +1676,34 @@ const ChatPage = () => {
                 }}
                 rows={1}
               />
-              <Button
-                type="primary"
-                icon={<SendOutlined />}
-                onClick={handleSendMessage}
-                disabled={!currentSession || !inputMessage.trim() || sending}
-                loading={sending}
-                style={{
-                  borderRadius: 10,
-                  height: 44,
-                  width: 44,
-                  background: inputMessage.trim() ? '#111827' : '#d1d5db',
-                  borderColor: 'transparent',
-                }}
-              />
+              {sending ? (
+                <Button
+                  type="primary"
+                  icon={<PauseOutlined />}
+                  onClick={handleStopStreaming}
+                  style={{
+                    borderRadius: 10,
+                    height: 44,
+                    width: 44,
+                    background: '#ef4444',
+                    borderColor: 'transparent',
+                  }}
+                />
+              ) : (
+                <Button
+                  type="primary"
+                  icon={<SendOutlined />}
+                  onClick={handleSendMessage}
+                  disabled={!currentSession || !inputMessage.trim()}
+                  style={{
+                    borderRadius: 10,
+                    height: 44,
+                    width: 44,
+                    background: inputMessage.trim() ? '#111827' : '#d1d5db',
+                    borderColor: 'transparent',
+                  }}
+                />
+              )}
             </div>
             <Text type="secondary" style={{ fontSize: 12, marginTop: 8, display: 'block', textAlign: 'center', color: '#9ca3af' }}>
               AI may produce inaccurate information. Double-check important info.

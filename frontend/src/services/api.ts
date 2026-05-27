@@ -180,6 +180,7 @@ export const chatApi = {
     onToolCall?: (tool: string) => void,
     onDone?: (citations: number[]) => void,
     onError?: (error: string) => void,
+    signal?: AbortSignal,
   ): Promise<void> => {
     const token = localStorage.getItem('access_token')
     const headers: Record<string, string> = {
@@ -193,6 +194,7 @@ export const chatApi = {
       method: 'POST',
       headers,
       body: JSON.stringify({ content }),
+      signal,
     })
 
     if (!response.ok) {
