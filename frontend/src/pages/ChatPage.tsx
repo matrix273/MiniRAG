@@ -990,7 +990,6 @@ const ChatPage = () => {
         },
         // signal: 用于取消流式请求
         abortController.signal,
-        },
       )
       
       // 自动重命名会话（类似 ChatGPT）
