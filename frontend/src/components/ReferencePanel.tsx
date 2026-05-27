@@ -3,6 +3,7 @@ import { CloseOutlined, LoadingOutlined } from '@ant-design/icons'
 import type { Citation } from '@/types'
 import { documentApi } from '@/services/api'
 import PDFViewer from './PDFViewer'
+import OfficeViewer from './OfficeViewer'
 
 interface ReferencePanelProps {
   citations: Citation[]
@@ -20,22 +21,25 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
   documentId,
 }) => {
   const [loading, setLoading] = useState(false)
-  const [pdfUrl, setPdfUrl] = useState<string>('')
-  const [pdfUrlCache, setPdfUrlCache] = useState<Record<string, string>>({})
+  const [fileUrl, setFileUrl] = useState<string>('')
+  const [docType, setDocType] = useState<string>('')
+  const [fileUrlCache, setFileUrlCache] = useState<Record<string, { url: string, type: string }>>({})
 
   const selectedCitation = selectedIndex !== null ? citations[selectedIndex] : null
 
   // Fetch original page content when citation is selected
   useEffect(() => {
     if (!selectedCitation) {
-      setPdfUrl('')
+      setFileUrl('')
+      setDocType('')
       return
     }
 
     // Use citation's document_id if available, otherwise fall back to prop
     const targetDocId = selectedCitation.document_id || documentId
     if (!targetDocId) {
-      setPdfUrl('')
+      setFileUrl('')
+      setDocType('')
       return
     }
 
@@ -44,20 +48,17 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
       try {
         const response = await documentApi.getPageContent(targetDocId, selectedCitation.page)
 
-        // If it's a PDF, get the file URL for preview
-        if (response.doc_type === 'pdf') {
-          // Check cache first
-          if (pdfUrlCache[targetDocId]) {
-            setPdfUrl(pdfUrlCache[targetDocId])
-          } else {
-            const fileUrl = documentApi.getFileUrl(targetDocId)
-            if (fileUrl) {
-              setPdfUrl(fileUrl)
-              setPdfUrlCache(prev => ({ ...prev, [targetDocId]: fileUrl }))
-            }
-          }
+        // Check cache first
+        if (fileUrlCache[targetDocId]) {
+          setFileUrl(fileUrlCache[targetDocId].url)
+          setDocType(fileUrlCache[targetDocId].type)
         } else {
-          setPdfUrl('')
+          const fileUrl = documentApi.getFileUrl(targetDocId)
+          if (fileUrl) {
+            setFileUrl(fileUrl)
+            setDocType(response.doc_type || 'pdf')
+            setFileUrlCache(prev => ({ ...prev, [targetDocId]: { url: fileUrl, type: response.doc_type || 'pdf' } }))
+          }
         }
       } catch (error) {
         console.error('Failed to fetch page content:', error)
@@ -169,18 +170,25 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
                 <div style={{ marginTop: 8, fontSize: 13 }}>加载中...</div>
               </div>
             ) : (
-              // 显示 PDF 预览
+              // 显示文档预览
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '8px 20px 20px' }}>
-                {pdfUrl ? (
-                  <div style={{ flex: 1, minHeight: 0 }}>
-                    <PDFViewer
-                      url={pdfUrl}
-                      page={selectedCitation.page}
-                    />
+                {fileUrl ? (
+                  <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                    {['docx', 'xlsx', 'pptx'].includes(docType) ? (
+                      <OfficeViewer
+                        fileUrl={fileUrl}
+                        fileType={docType as 'docx' | 'xlsx' | 'pptx'}
+                      />
+                    ) : (
+                      <PDFViewer
+                        url={fileUrl}
+                        page={selectedCitation.page}
+                      />
+                    )}
                   </div>
                 ) : (
                   <div style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>
-                    无法加载 PDF 预览
+                    无法加载文档预览
                   </div>
                 )}
               </div>
