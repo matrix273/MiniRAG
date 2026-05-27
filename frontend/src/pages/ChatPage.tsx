@@ -28,6 +28,8 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import ReferencePanel from '@/components/ReferencePanel'
 import PDFViewer from '@/components/PDFViewer'
 import OfficeViewer from '@/components/OfficeViewer'
+import MDViewer from '@/components/MDViewer'
+import GenericFileViewer from '@/components/GenericFileViewer'
 
 const { Text } = Typography
 
@@ -1898,22 +1900,47 @@ const ChatPage = () => {
                   {(() => {
                     const previewDocId = pdfPreviewDocId || selectedDoc
                     const previewDoc = documents.find(d => d.id === previewDocId)
-                    const isOfficeFile = previewDoc && ['docx', 'xlsx', 'pptx'].includes(previewDoc.doc_type)
-                    if (isOfficeFile) {
+                    const docType = previewDoc?.doc_type || 'pdf'
+                    
+                    // PDF files
+                    if (docType === 'pdf') {
                       return (
-                        <OfficeViewer
-                          fileUrl={documentApi.getFileUrl(previewDocId)}
-                          fileType={previewDoc.doc_type as 'docx' | 'xlsx' | 'pptx'}
+                        <PDFViewer
+                          url={documentApi.getFileUrl(previewDocId)}
+                          page={pdfPage}
+                          height={800}
                           docId={previewDocId}
                         />
                       )
                     }
+                    
+                    // Markdown files
+                    if (docType === 'md') {
+                      return (
+                        <MDViewer
+                          fileUrl={documentApi.getFileUrl(previewDocId)}
+                          docId={previewDocId}
+                        />
+                      )
+                    }
+                    
+                    // Office files
+                    if (['docx', 'xlsx'].includes(docType)) {
+                      return (
+                        <OfficeViewer
+                          fileUrl={documentApi.getFileUrl(previewDocId)}
+                          fileType={docType as 'docx' | 'xlsx'}
+                          docId={previewDocId}
+                        />
+                      )
+                    }
+                    
+                    // PowerPoint and other unsupported formats
                     return (
-                      <PDFViewer
-                        url={documentApi.getFileUrl(previewDocId)}
-                        page={pdfPage}
-                        height={800}
-                        docId={previewDocId}
+                      <GenericFileViewer
+                        fileUrl={documentApi.getFileUrl(previewDocId)}
+                        fileType={docType}
+                        filename={previewDoc?.original_name || 'file'}
                       />
                     )
                   })()}

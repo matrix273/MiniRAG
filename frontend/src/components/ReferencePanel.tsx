@@ -4,6 +4,8 @@ import type { Citation } from '@/types'
 import { documentApi } from '@/services/api'
 import PDFViewer from './PDFViewer'
 import OfficeViewer from './OfficeViewer'
+import MDViewer from './MDViewer'
+import GenericFileViewer from './GenericFileViewer'
 
 interface ReferencePanelProps {
   citations: Citation[]
@@ -178,17 +180,28 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '8px 20px 20px' }}>
                 {fileUrl ? (
                   <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                    {['docx', 'xlsx', 'pptx'].includes(docType) ? (
-                      <OfficeViewer
-                        fileUrl={fileUrl}
-                        fileType={docType as 'docx' | 'xlsx' | 'pptx'}
-                        docId={currentDocId}
-                      />
-                    ) : (
+                    {docType === 'pdf' ? (
                       <PDFViewer
                         url={fileUrl}
                         page={selectedCitation.page}
                         docId={currentDocId}
+                      />
+                    ) : docType === 'md' ? (
+                      <MDViewer
+                        fileUrl={fileUrl}
+                        docId={currentDocId}
+                      />
+                    ) : ['docx', 'xlsx'].includes(docType) ? (
+                      <OfficeViewer
+                        fileUrl={fileUrl}
+                        fileType={docType as 'docx' | 'xlsx'}
+                        docId={currentDocId}
+                      />
+                    ) : (
+                      <GenericFileViewer
+                        fileUrl={fileUrl}
+                        fileType={docType}
+                        filename={selectedCitation.document_id || 'file'}
                       />
                     )}
                   </div>
