@@ -294,7 +294,7 @@ function XlsxViewer({ fileUrl }: { fileUrl: string }) {
 
       {/* 表格内容 */}
       <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
+        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 13, tableLayout: 'fixed' }}>
           <thead>
             {/* 筛选行 */}
             {showFilters && (
