@@ -1,6 +1,13 @@
-# 多前端项目部署指南
+# 多前端项目部署指南（基于域名分离）
 
-本文档说明如何将 PageIndex 和 HR 两个前端项目独立打包并部署到 Nginx。
+本文档说明如何将 PageIndex 和 HR 两个前端项目独立打包并部署到 Nginx，使用不同域名访问。
+
+## 域名规划
+
+| 域名 | 项目 | 后端端口 |
+|------|------|----------|
+| kb.example.com | PageIndex (知识库) | 8000 |
+| hr.example.com | HR (人力资源) | 8001 |
 
 ## 项目结构
 
@@ -27,7 +34,7 @@ uv run npm run build
 uv run vite build
 ```
 
-构建产物位于 `frontend/dist/`，已配置 `base: '/app1/'`。
+构建产物位于 `frontend/dist/`，使用根路径 `base: '/'`。
 
 ### HR 项目
 
@@ -38,7 +45,7 @@ npm run build
 vite build
 ```
 
-构建产物位于 `frontend/dist/`，已配置 `base: '/app2/'`。
+构建产物位于 `frontend/dist/`，使用根路径 `base: '/'`。
 
 ## 2. 部署到服务器
 
