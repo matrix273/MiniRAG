@@ -138,7 +138,6 @@ const DocumentEdit: React.FC = () => {
           height="100%"
           preview="live"
           visibleDragbar={true}
-          theme={isDark ? "dark" : "light"}
         />
       </div>
 
