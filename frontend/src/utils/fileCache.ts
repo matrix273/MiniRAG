@@ -1,12 +1,13 @@
 /**
  * In-memory file cache with ETag validation.
- * Caches file blobs to avoid redundant downloads when previewing documents.
+ * Caches file blobs and object URLs to avoid redundant downloads when previewing documents.
  */
 
 interface CachedFile {
   blob: Blob
   etag: string
   timestamp: number
+  objectUrl?: string  // 缓存 object URL 供 iframe 直接使用
 }
 
 class FileCache {
@@ -43,11 +44,57 @@ class FileCache {
    * Store a file in the cache
    */
   set(docId: string, blob: Blob, etag: string): void {
-    this.cache.set(this.getKey(docId), {
+    const key = this.getKey(docId)
+    const existing = this.cache.get(key)
+    
+    // 如果已存在旧的 objectUrl，先撤销它
+    if (existing?.objectUrl) {
+      URL.revokeObjectURL(existing.objectUrl)
+    }
+    
+    this.cache.set(key, {
       blob,
       etag,
       timestamp: Date.now(),
     })
+  }
+
+  /**
+   * Get or create a cached object URL for direct iframe/src usage.
+   * This avoids creating new object URLs on every render.
+   */
+  getObjectUrl(docId: string, url: string): string | null {
+    const key = this.getKey(docId)
+    const cached = this.cache.get(key)
+    if (cached?.objectUrl) {
+      return cached.objectUrl
+    }
+    return null
+  }
+
+  /**
+   * Ensure a file is cached and return its object URL.
+   * If not cached, fetches it first.
+   */
+  async getObjectUrlAsync(docId: string, url: string): Promise<string> {
+    const key = this.getKey(docId)
+    const cached = this.cache.get(key)
+    
+    if (cached?.objectUrl) {
+      return cached.objectUrl
+    }
+    
+    // Fetch the file
+    const result = await this.fetch(docId, url)
+    const newObjectUrl = URL.createObjectURL(result)
+    
+    // Store the object URL in cache
+    const entry = this.cache.get(key)
+    if (entry) {
+      entry.objectUrl = newObjectUrl
+    }
+    
+    return newObjectUrl
   }
 
   /**
@@ -111,7 +158,12 @@ class FileCache {
    * Invalidate cache for a specific document
    */
   invalidate(docId: string): void {
-    this.cache.delete(this.getKey(docId))
+    const key = this.getKey(docId)
+    const cached = this.cache.get(key)
+    if (cached?.objectUrl) {
+      URL.revokeObjectURL(cached.objectUrl)
+    }
+    this.cache.delete(key)
   }
 
   /**
