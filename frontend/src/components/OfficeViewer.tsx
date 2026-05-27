@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Spin, Typography, Tabs, message } from 'antd'
+import { Spin, Typography, message } from 'antd'
 
 const { Text } = Typography
 
@@ -39,8 +39,8 @@ function DocxViewer({ fileUrl }: { fileUrl: string }) {
   }, [fileUrl])
 
   return (
-    <Spin spinning={loading}>
-      <div ref={containerRef} style={{ minHeight: 200 }} />
+    <Spin spinning={loading} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div ref={containerRef} style={{ flex: 1, overflow: 'auto', minHeight: 0 }} />
     </Spin>
   )
 }
