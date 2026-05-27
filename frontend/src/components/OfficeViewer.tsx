@@ -1,16 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import { Spin, Typography, message } from 'antd'
+import { fileCache } from '@/utils/fileCache'
 
 const { Text } = Typography
 
 interface OfficeViewerProps {
   fileUrl: string
   fileType: 'docx' | 'xlsx' | 'pptx'
+  docId?: string
 }
 
-function DocxViewer({ fileUrl }: { fileUrl: string }) {
+function extractDocId(fileUrl: string): string | undefined {
+  const match = fileUrl.match(/\/api\/documents\/([^/]+)\/file/)
+  return match?.[1]
+}
+
+function DocxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
+  const resolvedDocId = docId || extractDocId(fileUrl)
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -19,8 +27,13 @@ function DocxViewer({ fileUrl }: { fileUrl: string }) {
     const render = async () => {
       try {
         const { renderAsync } = await import('docx-preview')
-        const response = await fetch(fileUrl)
-        const blob = await response.blob()
+        let blob: Blob
+        if (resolvedDocId) {
+          blob = await fileCache.fetch(resolvedDocId, fileUrl)
+        } else {
+          const response = await fetch(fileUrl)
+          blob = await response.blob()
+        }
         if (!cancelled && containerRef.current) {
           containerRef.current.innerHTML = ''
           await renderAsync(blob, containerRef.current, undefined, {
@@ -38,7 +51,7 @@ function DocxViewer({ fileUrl }: { fileUrl: string }) {
     }
     render()
     return () => { cancelled = true }
-  }, [fileUrl])
+  }, [fileUrl, resolvedDocId])
 
   // 不能用 Ant Design Spin，它会插入额外 DOM 层破坏 flex 高度链
   return (
@@ -93,7 +106,7 @@ function detectHeaderRowIndex(rows: string[][]): number {
 
 const BATCH_SIZE = 200
 
-function XlsxViewer({ fileUrl }: { fileUrl: string }) {
+function XlsxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
   const [sheets, setSheets] = useState<RawSheetData[]>([])
   const [loading, setLoading] = useState(true)
   const [activeSheet, setActiveSheet] = useState(0)
@@ -103,14 +116,21 @@ function XlsxViewer({ fileUrl }: { fileUrl: string }) {
   const [visibleCount, setVisibleCount] = useState(BATCH_SIZE)
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const resolvedDocId = docId || extractDocId(fileUrl)
 
   useEffect(() => {
     const load = async () => {
       try {
         const XLSX = await import('xlsx')
-        const response = await fetch(fileUrl)
-        const buffer = await response.arrayBuffer()
-        const workbook = XLSX.read(buffer, { type: 'array' })
+        let arrayBuffer: ArrayBuffer
+        if (resolvedDocId) {
+          const blob = await fileCache.fetch(resolvedDocId, fileUrl)
+          arrayBuffer = await blob.arrayBuffer()
+        } else {
+          const response = await fetch(fileUrl)
+          arrayBuffer = await response.arrayBuffer()
+        }
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' })
         const parsed: RawSheetData[] = workbook.SheetNames.map((name) => {
           const sheet = workbook.Sheets[name]
           const data = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 })
@@ -131,7 +151,7 @@ function XlsxViewer({ fileUrl }: { fileUrl: string }) {
       }
     }
     load()
-  }, [fileUrl])
+  }, [fileUrl, resolvedDocId])
 
   // 获取当前 sheet 的表头行索引
   const headerRowIndex = headerRowBySheet[activeSheet] ?? 0
@@ -472,14 +492,14 @@ function PptxViewer({ fileUrl }: { fileUrl: string }) {
   )
 }
 
-export default function OfficeViewer({ fileUrl, fileType }: OfficeViewerProps) {
+export default function OfficeViewer({ fileUrl, fileType, docId }: OfficeViewerProps) {
   const containerStyle = { flex: 1, display: 'flex', flexDirection: 'column' as const, minHeight: 0 }
 
   switch (fileType) {
     case 'docx':
-      return <div style={containerStyle}><DocxViewer fileUrl={fileUrl} /></div>
+      return <div style={containerStyle}><DocxViewer fileUrl={fileUrl} docId={docId} /></div>
     case 'xlsx':
-      return <div style={containerStyle}><XlsxViewer fileUrl={fileUrl} /></div>
+      return <div style={containerStyle}><XlsxViewer fileUrl={fileUrl} docId={docId} /></div>
     case 'pptx':
       return <div style={containerStyle}><PptxViewer fileUrl={fileUrl} /></div>
     default:
