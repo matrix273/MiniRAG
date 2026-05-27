@@ -26,6 +26,8 @@ function DocxViewer({ fileUrl }: { fileUrl: string }) {
           await renderAsync(blob, containerRef.current, undefined, {
             debug: false,
             inWrapper: true,
+            breakPages: true,
+            ignoreLastRenderedPageBreak: false,
           })
         }
       } catch (err) {
@@ -38,10 +40,27 @@ function DocxViewer({ fileUrl }: { fileUrl: string }) {
     return () => { cancelled = true }
   }, [fileUrl])
 
+  // 不能用 Ant Design Spin，它会插入额外 DOM 层破坏 flex 高度链
   return (
-    <Spin spinning={loading} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <div ref={containerRef} style={{ flex: 1, overflow: 'auto', minHeight: 0 }} />
-    </Spin>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
+      {loading && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(255,255,255,0.8)', zIndex: 10,
+        }}>
+          <Spin tip="Loading..." />
+        </div>
+      )}
+      <div 
+        ref={containerRef} 
+        style={{ 
+          flex: 1, 
+          overflow: 'auto', 
+          minHeight: 0,
+        }} 
+      />
+    </div>
   )
 }
 
@@ -454,7 +473,7 @@ function PptxViewer({ fileUrl }: { fileUrl: string }) {
 }
 
 export default function OfficeViewer({ fileUrl, fileType }: OfficeViewerProps) {
-  const containerStyle = { flex: 1, display: 'flex', flexDirection: 'column' as const, minHeight: 0, overflow: 'hidden' }
+  const containerStyle = { flex: 1, display: 'flex', flexDirection: 'column' as const, minHeight: 0 }
 
   switch (fileType) {
     case 'docx':
