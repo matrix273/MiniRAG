@@ -95,7 +95,7 @@ function AppContent() {
           }}
         >
           <Title level={4} style={{ margin: 0, marginRight: 48, whiteSpace: 'nowrap', cursor: 'pointer' }} onClick={() => navigate('/')}>
-            PageIndex
+            RAG
           </Title>
           <Menu
             mode="horizontal"

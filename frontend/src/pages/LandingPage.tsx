@@ -18,9 +18,9 @@ export default function LandingPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#f0f2f5' }}>
       <div style={{ background: '#fff', padding: '80px 0', textAlign: 'center' }}>
-        <Title level={1}>PageIndex</Title>
+        <Title level={1}>RAG 智能问答</Title>
         <Paragraph style={{ fontSize: 18, color: '#666', maxWidth: 600, margin: '0 auto 40px' }}>
-          无向量、推理驱动的 RAG 文档问答系统
+          无向量、推理驱动的文档问答系统
         </Paragraph>
         <Space size="middle">
           {user ? (

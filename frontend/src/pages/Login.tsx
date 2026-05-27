@@ -35,7 +35,7 @@ export default function Login() {
               <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/')}>返回首页</Button>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <Title level={3} style={{ margin: 0 }}>PageIndex</Title>
+              <Title level={3} style={{ margin: 0 }}>RAG</Title>
               <Text type="secondary">登录到你的账号</Text>
             </div>
             <Form onFinish={onFinish} layout="vertical" size="large">
