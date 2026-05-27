@@ -188,6 +188,7 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
                       <PDFViewer
                         url={fileUrl}
                         page={selectedCitation.page}
+                        docId={currentDocId}
                       />
                     )}
                   </div>

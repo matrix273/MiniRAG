@@ -1913,6 +1913,7 @@ const ChatPage = () => {
                         url={documentApi.getFileUrl(previewDocId)}
                         page={pdfPage}
                         height={800}
+                        docId={previewDocId}
                       />
                     )
                   })()}
