@@ -28,6 +28,10 @@ def _table_to_markdown(table) -> str:
     return f"{header}\n{separator}\n{body}" if body else f"{header}\n{separator}"
 
 
+# 正文字号阈值（pt），超过此字号的段落可能被识别为标题
+_BODY_FONT_SIZE = 11.0
+
+
 def _heading_level(paragraph) -> int | None:
     """返回段落的标题级别，非标题返回 None。"""
     style_name = paragraph.style.name if paragraph.style else ""
@@ -38,6 +42,38 @@ def _heading_level(paragraph) -> int | None:
         ol = paragraph.style.paragraph_format.outline_level
         if ol is not None and 0 <= ol <= 5:
             return ol + 1
+    except Exception:
+        pass
+
+    # 基于格式的启发式检测：对短文本段落，检查字号和加粗
+    text = paragraph.text.strip()
+    if not text or len(text) > 80:
+        return None
+    # 跳过已有 markdown 标记的段落（如 "# xxx"）
+    if text.startswith("#"):
+        return None
+
+    try:
+        # 获取第一个 run 的格式
+        runs = paragraph.runs
+        if not runs:
+            return None
+        run = runs[0]
+        font = run.font
+        bold = font.bold
+        size = None
+        if font.size is not None:
+            size = font.size.pt
+
+        # 检测：大字号（> 正文字号+2pt）或加粗+中等字号（> 正文字号）
+        if size is not None and size > _BODY_FONT_SIZE + 2:
+            # 字号越大级别越低（12pt→5级，14pt→4级，16pt→3级，18pt→2级，20pt+→1级）
+            level = max(1, min(5, int((24 - size) / 2) + 1))
+            return level
+        if bold and size is not None and size > _BODY_FONT_SIZE:
+            return 4
+        if bold and len(text) < 40 and not text.endswith(("。", ".", "，", ",")):
+            return 4
     except Exception:
         pass
     return None
