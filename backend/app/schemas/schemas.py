@@ -44,16 +44,19 @@ class DocumentListResponse(BaseModel):
 # Folder Schemas
 class FolderCreate(BaseModel):
     name: str
+    description: Optional[str] = None
     parent_id: Optional[str] = None
 
 
 class FolderUpdate(BaseModel):
     name: str
+    description: Optional[str] = None
 
 
 class FolderResponse(BaseModel):
     id: str
     name: str
+    description: Optional[str] = None
     parent_id: Optional[str]
     created_at: datetime
     updated_at: Optional[datetime] = None

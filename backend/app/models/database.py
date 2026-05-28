@@ -1,4 +1,5 @@
 import uuid
+import asyncio
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
@@ -23,6 +24,8 @@ engine = create_async_engine(
     echo=settings.DEBUG,  # Only echo SQL when DEBUG=True
     # Hide SQL parameter logging for cleaner output
     hide_parameters=True,
+    pool_pre_ping=True,      # 连接健康检查，自动丢弃断开的连接
+    pool_recycle=1800,       # 30 分钟回收连接，避免 PostgreSQL idle timeout
 )
 
 # Set SQLAlchemy log level to WARNING to reduce noise
@@ -95,6 +98,7 @@ class Folder(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     parent_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("folders.id", ondelete="CASCADE"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
@@ -143,8 +147,18 @@ async def get_db() -> AsyncSession:
         try:
             yield session
             await session.commit()
+        except asyncio.CancelledError:
+            # 请求被客户端取消（如用户点击"停止"），静默回滚避免 terminate 报错
+            try:
+                await session.rollback()
+            except Exception:
+                pass
+            raise
         except Exception:
             await session.rollback()
             raise
         finally:
-            await session.close()
+            try:
+                await session.close()
+            except Exception:
+                pass
