@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Button, Typography, TreeSelect, Tooltip, App, Dropdown, Modal } from 'antd'
+import { Button, Typography, TreeSelect, Tooltip, App, Dropdown } from 'antd'
 import {
   SendOutlined,
   PlusOutlined,
@@ -14,7 +14,6 @@ import {
   RightOutlined,
   MenuOutlined,
   CloseOutlined,
-  ExclamationCircleOutlined,
   PauseOutlined,
 } from '@ant-design/icons'
 import { chatApi, documentApi, folderApi } from '@/services/api'
@@ -1892,6 +1891,9 @@ const ChatPage = () => {
                 <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                   {(() => {
                     const previewDocId = pdfPreviewDocId || selectedDoc
+                    if (!previewDocId) {
+                      return <div style={{ padding: 20, color: '#9ca3af', textAlign: 'center' }}>请选择文档</div>
+                    }
                     const previewDoc = documents.find(d => d.id === previewDocId)
                     const docType = previewDoc?.doc_type || 'pdf'
                     
