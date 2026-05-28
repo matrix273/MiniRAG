@@ -1,5 +1,46 @@
-*.pdf
+# 依赖
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 上传文件
 uploads/
-.gitignore
-.claude/
+
+# 数据库
+milvus_data.db
+*.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 构建
+dist/
+build/
+*.egg-info/
+
+# 日志
+*.log
+
+# 锁文件
+package-lock.json
 uv.lock
+
+# 文档工具
+.claude/
+.superpowers/
