@@ -14,10 +14,21 @@ from litellm import acompletion
 from app.models.database import Document, get_db, engine
 from app.core.config import get_settings
 from app.services.prompt_service import get_active_prompt
-from app.services.system_config_service import get_config_int
+from app.services.system_config_service import get_config_int, get_llm_config
 from app.services.agent_service import create_agent, run_agent_with_guardrails, create_model
 
 settings = get_settings()
+
+# 辅助函数：从数据库获取 LLM 环境变量
+async def _get_llm_env():
+    """从数据库获取当前 LLM 配置并设置环境变量"""
+    llm_config = await get_llm_config()
+    api_key = llm_config["dashscope_key"] or llm_config["openai_key"]
+    if api_key:
+        os.environ["OPENAI_API_KEY"] = api_key
+    if llm_config["api_base_url"]:
+        os.environ["OPENAI_BASE_URL"] = llm_config["api_base_url"]
+    return llm_config
 
 # LAZY import pageindex - will be imported after environment variables are set
 def _get_pageindex_client_class():
@@ -60,11 +71,11 @@ class DocumentService:
     """Service for document indexing and retrieval."""
     
     def __init__(self):
-        # Use DASHSCOPE_API_KEY if available, otherwise fallback to OPENAI_API_KEY
+        # Initial setup using .env values (will be overridden by database config)
         api_key = settings.DASHSCOPE_API_KEY or settings.OPENAI_API_KEY
         model = settings.DEFAULT_MODEL
         
-        # LiteLLM 直接使用 DASHSCOPE_API_KEY 环境变量
+        # Set initial env vars for LiteLLM
         if settings.DASHSCOPE_API_KEY:
             os.environ["DASHSCOPE_API_KEY"] = settings.DASHSCOPE_API_KEY
         elif settings.OPENAI_API_KEY:
@@ -80,6 +91,16 @@ class DocumentService:
             api_key=api_key,
             model=model,
         )
+    
+    async def _refresh_llm_config(self):
+        """从数据库刷新 LLM 配置并更新环境变量"""
+        llm_config = await get_llm_config()
+        api_key = llm_config["dashscope_key"] or llm_config["openai_key"]
+        if api_key:
+            os.environ["OPENAI_API_KEY"] = api_key
+        if llm_config["api_base_url"]:
+            os.environ["OPENAI_BASE_URL"] = llm_config["api_base_url"]
+        return llm_config
     
     async def index_document(self, doc_id: str, file_path: str, doc_type: str) -> None:
         """Index a document in the background."""
@@ -290,13 +311,16 @@ class ChatService:
         max_turns = await get_config_int("agent_max_turns", 5)
         timeout_seconds = await get_config_int("agent_timeout_seconds", 60)
 
+        # 从数据库获取 LLM 配置
+        llm_config = await self._refresh_llm_config()
+        
         # Create and run agent
-        model = create_model()
+        model = await create_model()
         # When structure_summary is injected, skip get_document/get_document_structure tools
         include_metadata_tools = not document.structure_summary
         
-        # Check if vision is enabled in settings
-        vision_enabled = settings.VISION_ENABLED if hasattr(settings, 'VISION_ENABLED') else False
+        # Check if vision is enabled from database config
+        vision_enabled = llm_config["vision_enabled"]
         
         # Add vision instructions to prompt if vision is enabled
         if vision_enabled:
@@ -384,10 +408,9 @@ class ChatService:
             )
             agent_prompt += f"\n\nChat history:\n{history_text}"
 
-        # Single LLM call with all document context
-        model = os.environ.get("DEFAULT_MODEL", settings.DEFAULT_MODEL)
-        if os.environ.get("DASHSCOPE_API_KEY"):
-            os.environ["OPENAI_API_KEY"] = os.environ.get("DASHSCOPE_API_KEY")
+        # Single LLM call with all document context - 从数据库读取配置
+        llm_config = await self._refresh_llm_config()
+        model = llm_config["default_model"]
 
         try:
             response = await acompletion(
@@ -434,9 +457,9 @@ class ChatService:
             "Do NOT mention tool names or describe your analysis process."
         )
 
-        model = os.environ.get("DEFAULT_MODEL", settings.DEFAULT_MODEL)
-        if os.environ.get("DASHSCOPE_API_KEY"):
-            os.environ["OPENAI_API_KEY"] = os.environ.get("DASHSCOPE_API_KEY")
+        # 从数据库读取配置
+        llm_config = await self._refresh_llm_config()
+        model = llm_config["default_model"]
 
         try:
             response = await acompletion(
@@ -663,8 +686,11 @@ class ChatService:
             {"role": "user", "content": query},
         ]
 
+        # 从数据库读取配置
+        llm_config = await self._refresh_llm_config()
+        
         response = await acompletion(
-            model=settings.DEFAULT_MODEL,
+            model=llm_config["default_model"],
             messages=messages,
         )
         return response.choices[0].message.content, []
