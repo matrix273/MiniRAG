@@ -1,6 +1,10 @@
 """System configuration key-value store service."""
 
+import os
+from dotenv import load_dotenv
 from sqlalchemy import select
+
+load_dotenv()
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 from app.models.database import SystemConfig, engine
@@ -94,12 +98,12 @@ async def init_default_configs():
 
 
 async def get_llm_config() -> dict:
-    """获取 LLM 配置，从数据库实时读取"""
+    """获取 LLM 配置，从数据库实时读取，回退到环境变量"""
     return {
         "default_model": await get_config("llm_default_model") or DEFAULT_CONFIGS["llm_default_model"]["value"],
         "vision_model": await get_config("llm_vision_model") or DEFAULT_CONFIGS["llm_vision_model"]["value"],
         "vision_enabled": (await get_config("llm_vision_enabled") or DEFAULT_CONFIGS["llm_vision_enabled"]["value"]).lower() == "true",
         "api_base_url": await get_config("llm_api_base_url") or DEFAULT_CONFIGS["llm_api_base_url"]["value"],
-        "dashscope_key": await get_config("llm_dashscope_key") or "",
-        "openai_key": await get_config("llm_openai_key") or "",
+        "dashscope_key": await get_config("llm_dashscope_key") or os.environ.get("DASHSCOPE_API_KEY") or "",
+        "openai_key": await get_config("llm_openai_key") or os.environ.get("OPENAI_API_KEY") or "",
     }

@@ -147,7 +147,7 @@ async def create_model() -> TrackedChatCompletionsModel:
     )
 
 
-def create_agent(
+async def create_agent(
     doc_client,
     doc_id: str,
     system_prompt: str,
@@ -226,7 +226,7 @@ def create_agent(
         tools.extend([get_page_images, get_page_images_base64])
 
     if model is None:
-        model = create_model()
+        model = await create_model()
 
     agent = Agent(
         name="PageIndex",
