@@ -75,11 +75,11 @@ const CreateMarkdownModal: React.FC<CreateMarkdownModalProps> = ({
         </Form.Item>
         <Form.Item
           name="folder_id"
-          label="保存到文件夹"
+          label="保存到知识库"
           initialValue={selectedFolderId}
         >
           <TreeSelect
-            placeholder="选择文件夹（可选）"
+            placeholder="选择知识库（可选）"
             treeData={convertToTreeData(folders)}
             allowClear
             treeDefaultExpandAll

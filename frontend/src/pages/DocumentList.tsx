@@ -75,7 +75,7 @@ const DocumentList = () => {
       const data = await folderApi.list()
       setFolders(data)
     } catch {
-      message.error('Failed to fetch folders')
+      message.error('获取知识库失败')
     }
   }
 
@@ -186,54 +186,73 @@ const DocumentList = () => {
 
   const handleCreateFolder = (parentId?: string) => {
     let inputName = ''
+    let inputDescription = ''
     Modal.confirm({
-      title: 'Create Folder',
+      title: '新建知识库',
       content: (
-        <Input
-          placeholder="Folder name"
-          onChange={e => { inputName = e.target.value }}
-          autoFocus
-        />
+        <div>
+          <Input
+            placeholder="知识库名称"
+            onChange={e => { inputName = e.target.value }}
+            autoFocus
+            style={{ marginBottom: 12 }}
+          />
+          <Input.TextArea
+            placeholder="描述（可选）"
+            onChange={e => { inputDescription = e.target.value }}
+            rows={3}
+          />
+        </div>
       ),
       onOk: async () => {
         if (!inputName.trim()) {
-          message.error('Folder name is required')
+          message.error('知识库名称不能为空')
           return
         }
         try {
-          await folderApi.create(inputName.trim(), parentId)
-          message.success('Folder created')
+          await folderApi.create(inputName.trim(), parentId, inputDescription.trim() || undefined)
+          message.success('知识库创建成功')
           fetchFolders()
         } catch {
-          message.error('Failed to create folder')
+          message.error('创建知识库失败')
         }
       },
     })
   }
 
-  const handleRenameFolder = (folderId: string, currentName: string) => {
+  const handleRenameFolder = (folderId: string, currentName: string, currentDescription?: string) => {
     let inputName = currentName
+    let inputDescription = currentDescription || ''
     Modal.confirm({
-      title: 'Rename Folder',
+      title: '重命名知识库',
       content: (
-        <Input
-          defaultValue={currentName}
-          placeholder="Folder name"
-          onChange={e => { inputName = e.target.value }}
-          autoFocus
-        />
+        <div>
+          <Input
+            defaultValue={currentName}
+            placeholder="知识库名称"
+            onChange={e => { inputName = e.target.value }}
+            autoFocus
+            style={{ marginBottom: 12 }}
+          />
+          <Input.TextArea
+            defaultValue={currentDescription}
+            placeholder="描述（可选）"
+            onChange={e => { inputDescription = e.target.value }}
+            rows={3}
+          />
+        </div>
       ),
       onOk: async () => {
         if (!inputName.trim()) {
-          message.error('Folder name is required')
+          message.error('知识库名称不能为空')
           return
         }
         try {
-          await folderApi.rename(folderId, inputName.trim())
-          message.success('Folder renamed')
+          await folderApi.rename(folderId, inputName.trim(), inputDescription.trim() || undefined)
+          message.success('知识库重命名成功')
           fetchFolders()
         } catch {
-          message.error('Failed to rename folder')
+          message.error('重命名知识库失败')
         }
       },
     })
@@ -241,16 +260,16 @@ const DocumentList = () => {
 
   const handleDeleteFolder = (folderId: string, folderName: string) => {
     modal.confirm({
-      title: 'Delete Folder?',
+      title: '删除知识库？',
       icon: <ExclamationCircleOutlined />,
-      content: `This will delete "${folderName}" and all its contents.`,
-      okText: 'Delete',
+      content: `确定要删除知识库 "${folderName}" 及其所有内容吗？`,
+      okText: '删除',
       okType: 'danger',
-      cancelText: 'Cancel',
+      cancelText: '取消',
       onOk: async () => {
         try {
           await folderApi.delete(folderId)
-          message.success('Folder deleted')
+          message.success('知识库删除成功')
           if (selectedFolderId === folderId) {
             setSelectedFolderId(null)
             setSelectedKeys([])
@@ -258,7 +277,7 @@ const DocumentList = () => {
           fetchFolders()
           fetchDocuments()
         } catch {
-          message.error('Failed to delete folder')
+          message.error('删除知识库失败')
         }
       },
     })
@@ -359,28 +378,28 @@ const DocumentList = () => {
     const dropTargetKey = info.node.key as string
     const dragKey = info.dragNode.key as string
 
-    // 检查拖动的是文件还是文件夹
+    // 检查拖动的是文件还是知识库
     const isDragFile = documents.some(d => d.id === dragKey)
     const isDragFolder = folders.some(f => f.id === dragKey)
 
     if (isDragFile) {
-      // 移动文件到目标文件夹
-      // 如果目标是文件或root，移动到root；否则移动到目标文件夹
+      // 移动文件到目标知识库
+      // 如果目标是文件或root，移动到root；否则移动到目标知识库
       const isTargetFolder = folders.some(f => f.id === dropTargetKey)
       const isTargetRoot = dropTargetKey === 'root'
       const targetFolderId = isTargetRoot || !isTargetFolder ? null : dropTargetKey
       handleMoveDocument(dragKey, targetFolderId)
     } else if (isDragFolder) {
-      // 移动文件夹
-      // 如果目标是文件或root，移动到root；否则移动到目标文件夹
+      // 移动知识库
+      // 如果目标是文件或root，移动到root；否则移动到目标知识库
       const isTargetFolder = folders.some(f => f.id === dropTargetKey)
       const isTargetRoot = dropTargetKey === 'root'
       const targetFolderId = isTargetRoot || !isTargetFolder ? null : dropTargetKey
       folderApi.move(dragKey, targetFolderId).then(() => {
-        message.success('Folder moved')
+        message.success('知识库移动成功')
         fetchFolders()
       }).catch(() => {
-        message.error('Failed to move folder')
+        message.error('移动知识库失败')
       })
     }
   }
@@ -592,7 +611,7 @@ const DocumentList = () => {
     return [
       {
         key: 'root',
-        title: 'All Documents',
+        title: '所有文档',
         icon: <FolderOpenOutlined />,
         children: treeData,
       },
@@ -611,7 +630,7 @@ const DocumentList = () => {
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, padding: '0 8px' }}>
-          <Title level={5} style={{ margin: 0, fontSize: 14 }}>Folders</Title>
+          <Title level={5} style={{ margin: 0, fontSize: 14 }}>知识库</Title>
           <Button
             type="text"
             icon={<FolderAddOutlined />}
@@ -638,7 +657,7 @@ const DocumentList = () => {
         <Card>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <Title level={4} style={{ margin: 0 }}>
-              {selectedFolderId ? `Documents in ${folders.find(f => f.id === selectedFolderId)?.name || 'folder'}` : 'All Documents'}
+              {selectedFolderId ? `${folders.find(f => f.id === selectedFolderId)?.name || '知识库'} 中的文档` : '所有文档'}
             </Title>
             <Space>
               {selectedDocIds.length > 0 && (
@@ -652,7 +671,7 @@ const DocumentList = () => {
                   <Dropdown
                     menu={{
                       items: [
-                        { key: 'root', label: 'Root Directory', onClick: () => handleMoveSelected('') },
+                        { key: 'root', label: '根目录', onClick: () => handleMoveSelected('') },
                         ...folderSelectItems.map(item => ({
                           key: item.value,
                           label: item.label,
@@ -672,7 +691,7 @@ const DocumentList = () => {
                 <>
                   <Button
                     icon={<EditOutlined />}
-                    onClick={() => handleRenameFolder(selectedFolderId, folders.find(f => f.id === selectedFolderId)?.name || '')}
+                    onClick={() => handleRenameFolder(selectedFolderId, folders.find(f => f.id === selectedFolderId)?.name || '', folders.find(f => f.id === selectedFolderId)?.description)}
                   >
                     Rename
                   </Button>
@@ -681,7 +700,7 @@ const DocumentList = () => {
                     icon={<DeleteOutlined />}
                     onClick={() => handleDeleteFolder(selectedFolderId, folders.find(f => f.id === selectedFolderId)?.name || '')}
                   >
-                    Delete Folder
+                    删除知识库
                   </Button>
                 </>
               )}
@@ -705,15 +724,15 @@ const DocumentList = () => {
             okButtonProps={{ loading: uploading }}
           >
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', marginBottom: 8 }}>Select folder:</label>
+              <label style={{ display: 'block', marginBottom: 8 }}>选择知识库：</label>
               <Select
                 style={{ width: '100%' }}
                 value={uploadFolderId}
                 onChange={setUploadFolderId}
                 allowClear
-                placeholder="Root Directory"
+                placeholder="根目录"
                 options={[
-                  { value: '', label: 'Root Directory' },
+                  { value: '', label: '根目录' },
                   ...folderSelectItems.map(item => ({
                     value: item.value,
                     label: item.label,
