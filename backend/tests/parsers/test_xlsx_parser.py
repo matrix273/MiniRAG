@@ -2,8 +2,8 @@ import tempfile
 from pathlib import Path
 from openpyxl import Workbook
 
-from pageindex.parsers import ParseResult
-from pageindex.parsers.xlsx_parser import parse_xlsx
+from app.services.indexing.parsers import ParseResult
+from app.services.indexing.parsers.xlsx import parse_xlsx
 
 
 def _make_xlsx(sheets: dict[str, list[list]]) -> Path:

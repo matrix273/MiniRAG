@@ -2,8 +2,8 @@ import tempfile
 from pathlib import Path
 from docx import Document
 
-from pageindex.parsers import ParseResult
-from pageindex.parsers.docx_parser import parse_docx
+from app.services.indexing.parsers import ParseResult
+from app.services.indexing.parsers.docx import parse_docx
 
 
 def _make_docx(paragraphs: list[tuple[str, str]]) -> Path:

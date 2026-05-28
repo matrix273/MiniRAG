@@ -3,8 +3,8 @@ from pathlib import Path
 from pptx import Presentation
 from pptx.util import Inches
 
-from pageindex.parsers import ParseResult
-from pageindex.parsers.pptx_parser import parse_pptx
+from app.services.indexing.parsers import ParseResult
+from app.services.indexing.parsers.pptx import parse_pptx
 
 
 def _make_pptx(slides_content: list[str]) -> Path:

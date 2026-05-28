@@ -1,4 +1,4 @@
-from pageindex.parsers.tree_builder import build_tree_from_sections
+from app.services.indexing.parsers.tree_builder import build_tree_from_sections
 
 
 def test_flat_sections():
