@@ -138,7 +138,7 @@ def search_similar(query: str, top_k: int = 5, threshold: float = 0.3) -> list[d
     matches = []
     for hit in results[0]:
         distance = hit["distance"]
-        if distance >= threshold:
+        if distance <= threshold:
             matches.append({
                 "document_id": hit["entity"]["document_id"],
                 "distance": distance,
