@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
+import asyncio
 import uuid
 import os
 import shutil
@@ -105,6 +106,21 @@ async def startup():
     if llm_config["api_base_url"]:
         os.environ["OPENAI_BASE_URL"] = llm_config["api_base_url"]
     logging.info(f"Loaded LLM config: model={llm_config['default_model']}, vision_enabled={llm_config['vision_enabled']}")
+    
+    # 处理中断的任务：将 processing 状态的文档重置为 error
+    from sqlalchemy import select, update
+    async with async_session() as db:
+        result = await db.execute(
+            update(Document)
+            .where(Document.status == "processing")
+            .values(
+                status="error",
+                error_message="服务重启导致任务中断，请点击重新索引重试"
+            )
+        )
+        if result.rowcount > 0:
+            logging.warning(f"Reset {result.rowcount} documents from 'processing' to 'error' due to server restart")
+            await db.commit()
 
 
 # ========== Document Endpoints ==========
@@ -285,8 +301,17 @@ async def get_document_page_content(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     
-    # Get content from structure
-    content = doc_service.get_content_from_structure(doc.structure, page_num, page_num)
+    # 优先从 pages 数据中获取内容
+    content = ""
+    if doc.pages:
+        for page_data in doc.pages:
+            if isinstance(page_data, dict) and page_data.get("page") == page_num:
+                content = page_data.get("content", "")
+                break
+    
+    # 回退到 structure 提取
+    if not content:
+        content = doc_service.get_content_from_structure(doc.structure, page_num, page_num)
     
     return {"page": page_num, "content": content, "doc_type": doc.doc_type}
 
@@ -612,7 +637,7 @@ async def send_message(
             matched_docs = await chat_service.match_documents_to_query(
                 message_data.content, db
             )
-            _perf_log.info(f"[perf] vector_search: {_time.perf_counter()-_t0:.3f}s, matched={len(matched_docs)} docs")
+            _perf_log.info(f"[perf] match_documents: {_time.perf_counter()-_t0:.3f}s, matched={len(matched_docs)} docs")
             documents = matched_docs
     else:
         document_ids = session.document_ids or ([session.document_id] if session.document_id else [])
@@ -669,7 +694,7 @@ async def send_message(
         # Log error and return fallback response
         import logging
         logging.error(f"Error querying document: {e}")
-        answer = f"I'm sorry, I encountered an error processing your question. Error: {str(e)}"
+        answer = f"抱歉，处理您的问题时遇到错误：{str(e)}"
         citations = []
 
     _perf_log.info(f"[perf] ai_query: {_time.perf_counter()-_t_query:.3f}s, docs={len(documents)}")
@@ -714,13 +739,34 @@ async def send_message_stream(
         raise HTTPException(status_code=404, detail="Chat session not found")
 
     # Get document
-    doc_ids = session.document_ids or (session.document_id and [session.document_id]) or []
-    documents = []
-    for did in doc_ids:
-        result = await db.execute(select(Document).where(Document.id == did))
-        doc = result.scalar_one_or_none()
-        if doc:
-            documents.append(doc)
+    if session.is_auto:
+        # 自动推断模式：基于 query 向量匹配文档
+        import re as _re
+        _system_patterns = [
+            r'有哪些.{0,4}(文档|文件|资料|内容)',
+            r'当前.{0,6}(文档|文件|资料)',
+            r'列出.{0,4}(文档|文件)',
+            r'总共.{0,4}(文档|文件)',
+            r'几.{0,2}(个|份).{0,4}(文档|文件)',
+            r'有什么.{0,4}(文档|文件)',
+            r'(文档|文件).{0,4}列表',
+            r'(文档|文件).{0,4}数量',
+            r'帮我.{0,4}(整理|总结|归纳).{0,4}(全部|所有|所有)',
+        ]
+        is_system_query = any(_re.search(p, message_data.content) for p in _system_patterns)
+        if is_system_query:
+            documents = []
+        else:
+            from app.services.document_service import chat_service as _cs
+            documents = await _cs.match_documents_to_query(message_data.content, db)
+    else:
+        doc_ids = session.document_ids or (session.document_id and [session.document_id]) or []
+        documents = []
+        for did in doc_ids:
+            result = await db.execute(select(Document).where(Document.id == did))
+            doc = result.scalar_one_or_none()
+            if doc:
+                documents.append(doc)
 
     # Save user message
     user_message = ChatMessage(
@@ -809,7 +855,7 @@ async def send_message_stream(
                     )
 
                 include_metadata_tools = not document.structure_summary
-                agent, tracked = create_agent(
+                agent, tracked = await create_agent(
                     doc_client=doc_client,
                     doc_id=document.id,
                     system_prompt=agent_prompt,
@@ -817,7 +863,7 @@ async def send_message_stream(
                     include_vision_tools=vision_enabled,
                 )
             else:
-                agent, tracked = create_agent(
+                agent, tracked = await create_agent(
                     doc_client=None,
                     doc_id="",
                     system_prompt="你是一个有帮助的助手。",
@@ -832,41 +878,62 @@ async def send_message_stream(
                 elif event["type"] == "done":
                     citations = event.get("citations", [])
                     full_text = str(event.get("full_text", full_text))
-                    yield f"data: {json.dumps({'type': 'done', 'citations': citations})}\n\n"
+                    # 格式化 citations（添加 document_id 等字段），发送给前端
+                    formatted_citations_for_sse = None
+                    if citations and documents:
+                        document = documents[0]
+                        raw_cits = chat_service._extract_citations(
+                            document, str(full_text), citations
+                        )
+                        formatted_citations_for_sse = [
+                            {k: v for k, v in c.items() if k != 'index'}
+                            for c in raw_cits
+                        ] if raw_cits else None
+                    yield f"data: {json.dumps({'type': 'done', 'citations': formatted_citations_for_sse or []})}\n\n"
                 elif event["type"] == "error":
                     full_text = f"Error: {event['message']}"
                     yield f"data: {json.dumps({'type': 'error', 'message': event['message']})}\n\n"
+        except asyncio.CancelledError:
+            # 用户点击"停止"导致请求被取消，静默处理
+            pass
         except Exception as e:
             full_text = f"Error: {str(e)}"
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
         finally:
-            # Save AI response to DB
+            # Save AI response to DB（仅在有内容且未被取消时保存）
             if full_text:
-                # 转换 citations 格式：页码列表 -> Citation 对象列表
-                formatted_citations = None
-                if citations and documents:
-                    document = documents[0]
-                    # 使用 _extract_citations 转换格式
-                    raw_citations = chat_service._extract_citations(
-                        document, str(full_text), citations
-                    )
-                    # 移除 index 字段，确保符合 Citation 模型
-                    formatted_citations = [
-                        {k: v for k, v in c.items() if k != 'index'}
-                        for c in raw_citations
-                    ] if raw_citations else None
+                try:
+                    # 转换 citations 格式：页码列表 -> Citation 对象列表
+                    formatted_citations = None
+                    if citations and documents:
+                        document = documents[0]
+                        # 使用 _extract_citations 转换格式
+                        raw_citations = chat_service._extract_citations(
+                            document, str(full_text), citations
+                        )
+                        # 移除 index 字段，确保符合 Citation 模型
+                        formatted_citations = [
+                            {k: v for k, v in c.items() if k != 'index'}
+                            for c in raw_citations
+                        ] if raw_citations else None
 
-                async with async_session() as save_db:
-                    ai_message = ChatMessage(
-                        session_id=session_id,
-                        role="assistant",
-                        content=full_text,
-                        citations=formatted_citations,
-                    )
-                    save_db.add(ai_message)
-                    await save_db.commit()
+                    async with async_session() as save_db:
+                        ai_message = ChatMessage(
+                            session_id=session_id,
+                            role="assistant",
+                            content=full_text,
+                            citations=formatted_citations,
+                        )
+                        save_db.add(ai_message)
+                        await save_db.commit()
+                except Exception:
+                    # 保存失败不影响响应（用户可能已断开连接）
+                    pass
 
-            yield "data: [DONE]\n\n"
+            try:
+                yield "data: [DONE]\n\n"
+            except Exception:
+                pass
 
     return StreamingResponse(
         generate(),
@@ -961,6 +1028,7 @@ def build_folder_tree(folders: List[Folder], root_docs: List[Document]) -> List[
             FolderResponse(
                 id=f.id,
                 name=f.name,
+                description=f.description,
                 parent_id=f.parent_id,
                 created_at=f.created_at,
                 updated_at=f.updated_at,
@@ -1010,6 +1078,7 @@ async def create_folder(data: FolderCreate, db: AsyncSession = Depends(get_db)):
 
     folder = Folder(
         name=data.name,
+        description=data.description,
         parent_id=data.parent_id,
     )
     db.add(folder)
@@ -1018,6 +1087,7 @@ async def create_folder(data: FolderCreate, db: AsyncSession = Depends(get_db)):
     return FolderResponse(
         id=folder.id,
         name=folder.name,
+        description=folder.description,
         parent_id=folder.parent_id,
         created_at=folder.created_at,
         updated_at=folder.updated_at,
@@ -1038,11 +1108,14 @@ async def update_folder(folder_id: str, data: FolderUpdate, db: AsyncSession = D
         raise HTTPException(status_code=404, detail="Folder not found")
 
     folder.name = data.name
+    if data.description is not None:
+        folder.description = data.description
     await db.commit()
 
     return FolderResponse(
         id=folder.id,
         name=folder.name,
+        description=folder.description,
         parent_id=folder.parent_id,
         created_at=folder.created_at,
         updated_at=folder.updated_at,
@@ -1326,7 +1399,7 @@ async def get_page_images_base64(
 ):
     """Get page images as base64 encoded strings for visual analysis."""
     from sqlalchemy import select
-    from backend.pageindex.vision import pdf_pages_to_base64
+    from app.services.indexing.vision import pdf_pages_to_base64
     
     result = await db.execute(select(Document).where(Document.id == doc_id))
     doc = result.scalar_one_or_none()
