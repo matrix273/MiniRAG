@@ -95,6 +95,16 @@ async def startup():
     from app.services.auth_service import seed_roles_and_permissions
     async with async_session() as seed_db:
         await seed_roles_and_permissions(seed_db)
+    
+    # 从数据库加载 LLM 配置并设置环境变量
+    from app.services.system_config_service import get_llm_config
+    llm_config = await get_llm_config()
+    api_key = llm_config["dashscope_key"] or llm_config["openai_key"]
+    if api_key:
+        os.environ["OPENAI_API_KEY"] = api_key
+    if llm_config["api_base_url"]:
+        os.environ["OPENAI_BASE_URL"] = llm_config["api_base_url"]
+    logging.info(f"Loaded LLM config: model={llm_config['default_model']}, vision_enabled={llm_config['vision_enabled']}")
 
 
 # ========== Document Endpoints ==========
@@ -777,10 +787,19 @@ async def send_message_stream(
                     )
                     agent_prompt += f"\n\nChat history:\n{history_text}"
 
+                # 从数据库获取 LLM 配置
+                from app.services.system_config_service import get_llm_config
+                llm_config = await get_llm_config()
+                
+                # 更新环境变量供 LiteLLM 使用
+                api_key = llm_config["dashscope_key"] or llm_config["openai_key"]
+                if api_key:
+                    os.environ["OPENAI_API_KEY"] = api_key
+                if llm_config["api_base_url"]:
+                    os.environ["OPENAI_BASE_URL"] = llm_config["api_base_url"]
+                
                 # 检查是否启用视觉功能
-                from app.core.config import get_settings
-                _settings = get_settings()
-                vision_enabled = _settings.VISION_ENABLED if hasattr(_settings, 'VISION_ENABLED') else False
+                vision_enabled = llm_config["vision_enabled"]
                 if vision_enabled:
                     agent_prompt += (
                         "\n\nVISUAL MODE: This system supports visual analysis of PDF pages. "
