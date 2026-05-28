@@ -17,7 +17,7 @@ import {
   ExclamationCircleOutlined,
   PauseOutlined,
 } from '@ant-design/icons'
-import { chatApi, documentApi, folderApi, vectorDbApi } from '@/services/api'
+import { chatApi, documentApi, folderApi } from '@/services/api'
 import type { ChatSession, Document, Folder } from '@/types'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
@@ -770,7 +770,7 @@ const ChatPage = () => {
   // 消息多选状态
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set())
 
-  // Folder tree state
+  // 知识库树状态
   const [folders, setFolders] = useState<Folder[]>([])
   const [treeData, setTreeData] = useState<any[]>([])
 
@@ -850,7 +850,7 @@ const ChatPage = () => {
   const resolveTreeValues = (values: string[]): string[] => {
     const docIds: string[] = []
     const resolveFolder = (folder: Folder) => {
-      // 递归收集该文件夹下所有文档（含子文件夹）
+      // 递归收集该知识库下所有文档（含子知识库）
       for (const child of folder.children || []) {
         resolveFolder(child)
       }
@@ -866,7 +866,7 @@ const ChatPage = () => {
         docIds.push(val.replace('doc:', ''))
       } else if (val.startsWith('folder:')) {
         const folderId = val.replace('folder:', '')
-        // 递归查找文件夹及其子文件夹中的所有文档
+        // 递归查找知识库及其子知识库中的所有文档
         const findFolder = (fl: Folder[]): Folder | null => {
           for (const f of fl) {
             if (f.id === folderId) return f
@@ -891,25 +891,7 @@ const ChatPage = () => {
         setCurrentSession(session.id)
         setMessages([])
       } else {
-        // 无选中文档 → 先检查向量数据库是否有数据
-        const vectorStatus = await vectorDbApi.getStatus()
-        if (!vectorStatus.has_data) {
-          Modal.confirm({
-            title: '向量数据库为空',
-            icon: <ExclamationCircleOutlined />,
-            content: '当前向量数据库中没有已索引的文档，自动匹配模式将无法找到相关文档。请先上传并索引文档，或选择具体文档进行对话。',
-            okText: '仍然继续',
-            cancelText: '取消',
-            onOk: async () => {
-              const session = await chatApi.createAutoSession('New Chat')
-              setSessions([session, ...sessions])
-              setCurrentSession(session.id)
-              setMessages([])
-            },
-          })
-          return
-        }
-        // 有向量数据 → 正常创建 auto session
+        // 无选中文档 → 直接创建 auto session（不再检查向量数据库）
         const session = await chatApi.createAutoSession('New Chat')
         setSessions([session, ...sessions])
         setCurrentSession(session.id)
@@ -980,9 +962,15 @@ const ChatPage = () => {
         (tool) => {
           console.log('Tool call:', tool)
         },
-        // onDone: 完成
+        // onDone: 完成 — 将格式化的 citations 设置到消息中
         (citations) => {
-          console.log('Done, citations:', citations)
+          if (citations && citations.length > 0) {
+            setMessages(prev => prev.map(msg => 
+              msg.id === aiMsgId 
+                ? { ...msg, citations }
+                : msg
+            ))
+          }
         },
         // onError: 错误
         (error) => {
@@ -1002,10 +990,15 @@ const ChatPage = () => {
         const newTitle = inputMessage.slice(0, 20) + (inputMessage.length > 20 ? '...' : '')
         await handleRenameSession(currentSession, newTitle)
       }
-    } catch (error) {
-      message.error('Failed to send message')
-      // 移除空的 AI 消息
-      setMessages(prev => prev.filter(msg => msg.id !== aiMsgId))
+    } catch (error: any) {
+      // 用户主动停止（abort）时不报错
+      if (error?.name === 'AbortError' || error?.message?.includes('abort')) {
+        // 静默处理：保留已收到的部分文本
+      } else {
+        message.error('Failed to send message')
+        // 移除空的 AI 消息
+        setMessages(prev => prev.filter(msg => msg.id !== aiMsgId))
+      }
     } finally {
       setSending(false)
     }
@@ -1202,13 +1195,13 @@ const ChatPage = () => {
         {/* Document Selector - Tree Select (Multiple, Optional) */}
         <div style={{ padding: 16, borderBottom: '1px solid #e5e7eb' }}>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8, color: '#6b7280' }}>
-            基于文档 (可选，留空则自动匹配)
+            基于知识库 (可选，留空则自动匹配)
           </Text>
           <TreeSelect
             style={{ width: '100%' }}
             value={selectedDocs.map(id => `doc:${id}`)}
             treeData={treeData}
-            placeholder="选择文档（可选，留空自动匹配）"
+            placeholder="选择知识库（可选，留空自动匹配）"
             treeDefaultExpandAll
             showSearch
             multiple
@@ -1251,7 +1244,7 @@ const ChatPage = () => {
               background: '#111827',
             }}
           >
-            {selectedDocs.length > 0 ? `Chat with ${selectedDocs.length} doc${selectedDocs.length > 1 ? 's' : ''}` : 'New Chat (Auto-match)'}
+            {selectedDocs.length > 0 ? `与 ${selectedDocs.length} 个知识库对话` : '新建对话 (自动匹配)'}
           </Button>
         </div>
 
@@ -1421,8 +1414,8 @@ const ChatPage = () => {
               <div style={{ fontSize: 14, textAlign: 'center', maxWidth: 480 }}>
                 {selectedDocsInfo.length === 0 ? (
                   <>
-                    直接提问，我会自动匹配最相关的文档来回答。<br />
-                    <span style={{ color: '#9ca3af' }}>你也可以在左侧选择特定文档进行针对性提问。</span>
+                    直接提问，我会自动匹配最相关的知识库来回答。<br />
+                    <span style={{ color: '#9ca3af' }}>你也可以在左侧选择特定知识库进行针对性提问。</span>
                   </>
                 ) : selectedDocsInfo.length === 1 ? (
                   <>Ask questions about <strong>{selectedDocsInfo[0]?.filename}</strong></>
@@ -1536,7 +1529,7 @@ const ChatPage = () => {
         )}
 
         {/* PDF Preview Toggle Button - 右侧中央折叠按钮 */}
-        <Tooltip title={showPdfOnly || showReferencePanel ? "关闭文档预览" : "显示文档预览"}>
+        <Tooltip title={showPdfOnly || showReferencePanel ? "关闭知识库预览" : "显示知识库预览"}>
           <button
             onClick={() => {
               if (showPdfOnly || showReferencePanel) {
@@ -1577,7 +1570,7 @@ const ChatPage = () => {
           >
             <FileTextOutlined style={{ fontSize: 16, color: (showPdfOnly || showReferencePanel) ? '#fff' : '#6b7280' }} />
             <span style={{ fontSize: 10, color: (showPdfOnly || showReferencePanel) ? '#fff' : '#6b7280', writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
-              文档
+              知识库
             </span>
           </button>
         </Tooltip>
@@ -1714,7 +1707,7 @@ const ChatPage = () => {
       </div>
 
       {/* Reference Panel - 默认折叠，有引用时显示引用，无引用时显示 PDF */}
-      {(showReferencePanel || showPdfOnly) && selectedDoc && (
+      {((showPdfOnly && selectedDoc) || (showReferencePanel && activeCitations.length > 0)) && (
         <>
           {/* Resize Handle */}
           <div
@@ -1798,7 +1791,7 @@ const ChatPage = () => {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>
-                      文档预览
+                      知识库预览
                     </div>
                     {selectedDocs.length > 1 && (
                       <select
