@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Card, Tabs, Table, Button, Modal, Input, Form, Tag, Space, message, Popconfirm, Typography, InputNumber } from 'antd'
+import { Card, Tabs, Table, Button, Modal, Input, Form, Tag, Space, message, Popconfirm, Typography, InputNumber, Switch } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import { promptApi, systemConfigApi } from '@/services/api'
 import type { PromptConfig, SystemConfig } from '@/types'
@@ -10,6 +10,16 @@ const { TextArea } = Input
 const CATEGORIES = [
   { key: 'agent_system', label: 'Agent System', description: 'Agent 行为和工具使用策略' },
   { key: 'rag_template', label: 'RAG Template', description: 'RAG 问答答案格式要求' },
+]
+
+// LLM 配置项
+const LLM_CONFIG_KEYS = [
+  'llm_default_model',
+  'llm_vision_model',
+  'llm_vision_enabled',
+  'llm_api_base_url',
+  'llm_dashscope_key',
+  'llm_openai_key',
 ]
 
 const PromptConfigPage = () => {
@@ -192,6 +202,54 @@ const PromptConfigPage = () => {
     },
   ]
 
+  // LLM 配置专用列
+  const llmConfigColumns = [
+    { title: '参数', dataIndex: 'key', width: 200 },
+    { title: '说明', dataIndex: 'description', width: 280 },
+    {
+      title: '当前值',
+      dataIndex: 'value',
+      render: (val: string, record: SystemConfig) => {
+        // 布尔类型使用 Switch
+        if (record.key.includes('enabled')) {
+          return (
+            <Switch
+              checked={val === 'true'}
+              onChange={(checked) => handleConfigUpdate(record.key, checked ? 'true' : 'false')}
+              checkedChildren="启用"
+              unCheckedChildren="禁用"
+            />
+          )
+        }
+        // API Key 使用密码输入
+        if (record.key.includes('key')) {
+          return (
+            <Input.Password
+              value={val}
+              placeholder={val ? '****' : '请输入 API Key'}
+              onPressEnter={(e) => handleConfigUpdate(record.key, (e.target as HTMLInputElement).value)}
+              style={{ width: 300 }}
+            />
+          )
+        }
+        // 其他使用普通输入
+        return (
+          <Input
+            value={val}
+            onPressEnter={(e) => handleConfigUpdate(record.key, (e.target as HTMLInputElement).value)}
+            style={{ width: 300 }}
+          />
+        )
+      },
+    },
+    {
+      title: '更新时间',
+      dataIndex: 'updated_at',
+      width: 180,
+      render: (t: string) => new Date(t).toLocaleString(),
+    },
+  ]
+
   return (
     <div style={{ maxWidth: 1200 }}>
       <Title level={3}>系统配置</Title>
@@ -231,12 +289,30 @@ const PromptConfigPage = () => {
             label: 'Agent 参数',
             children: (
               <Table
-                dataSource={configs}
+                dataSource={configs.filter(c => !LLM_CONFIG_KEYS.includes(c.key))}
                 columns={configColumns}
                 rowKey="key"
                 loading={configLoading}
                 pagination={false}
               />
+            ),
+          },
+          {
+            key: 'llm_config',
+            label: 'LLM 配置',
+            children: (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <Text type="secondary">大模型配置 - 使用 LiteLLM 支持多种模型提供商 (DashScope, OpenAI 等)</Text>
+                </div>
+                <Table
+                  dataSource={configs.filter(c => LLM_CONFIG_KEYS.includes(c.key))}
+                  columns={llmConfigColumns}
+                  rowKey="key"
+                  loading={configLoading}
+                  pagination={false}
+                />
+              </>
             ),
           },
         ]}
