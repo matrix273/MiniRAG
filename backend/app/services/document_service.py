@@ -30,9 +30,9 @@ async def _get_llm_env():
         os.environ["OPENAI_BASE_URL"] = llm_config["api_base_url"]
     return llm_config
 
-# LAZY import pageindex - will be imported after environment variables are set
+# LAZY import indexing - will be imported after environment variables are set
 def _get_pageindex_client_class():
-    from pageindex import PageIndexClient
+    from app.services.indexing import PageIndexClient
     return PageIndexClient
 
 
@@ -192,6 +192,23 @@ class DocumentService:
                 
                 # Check if node overlaps with requested range
                 if node_start <= end_page and node_end >= start_page:
+                    # Collect node content if available
+                    title = node.get("title", "")
+                    summary = node.get("summary", "")
+                    content = node.get("content", "")
+                    
+                    # Build node text
+                    node_text_parts = []
+                    if title:
+                        node_text_parts.append(f"## {title}")
+                    if summary:
+                        node_text_parts.append(summary)
+                    if content:
+                        node_text_parts.append(content)
+                    
+                    if node_text_parts:
+                        content_parts.append("\n".join(node_text_parts))
+                    
                     # Recurse into child nodes
                     if "nodes" in node and node["nodes"]:
                         traverse(node["nodes"])
@@ -332,7 +349,7 @@ class ChatService:
                 "Example: get_page_images(pages='5-7') to get images of pages 5-7."
             )
         
-        agent, tracked_client = create_agent(
+        agent, tracked_client = await create_agent(
             doc_client=self.doc_service.client,
             doc_id=document.id,
             system_prompt=agent_prompt,
@@ -634,24 +651,50 @@ class ChatService:
         return citations
 
     async def match_documents_to_query(self, query: str, db: AsyncSession, limit: int = 5) -> list[Document]:
-        """通过向量搜索匹配与 query 相关的文档"""
-        from app.services.vector_service import search_similar
+        """基于向量相似度匹配 query 与文档的 doc_description。
 
-        matches = search_similar(query, top_k=limit, threshold=0.3)
+        策略：
+        1. 用 DashScope embedding 将 query 编码为向量
+        2. 在 Milvus 中做余弦相似度搜索
+        3. 根据匹配的 document_id 从数据库加载文档对象
+        4. 如果无匹配，回退为按时间倒序返回
+        """
+        from sqlalchemy import select as sa_select
+
+        try:
+            from app.services.vector_service import search_similar
+            matches = search_similar(query, top_k=limit, threshold=0.5)
+        except Exception as e:
+            logging.warning(f"Vector search failed, falling back to recent docs: {e}")
+            return await self._get_recent_documents(db, limit)
+
         if not matches:
-            return []
+            return await self._get_recent_documents(db, limit)
 
-        documents = []
-        for match in matches:
-            doc_id = match["document_id"]
-            result = await db.execute(
-                select(Document).where(Document.id == doc_id, Document.status == "completed")
-            )
-            doc = result.scalar_one_or_none()
+        doc_ids = [m["document_id"] for m in matches]
+        result = await db.execute(
+            sa_select(Document).where(Document.id.in_(doc_ids))
+        )
+        docs = {doc.id: doc for doc in result.scalars().all()}
+
+        # 按向量搜索的相似度排序
+        ordered = []
+        for m in matches:
+            doc = docs.get(m["document_id"])
             if doc:
-                documents.append(doc)
+                ordered.append(doc)
+        return ordered
 
-        return documents
+    async def _get_recent_documents(self, db: AsyncSession, limit: int) -> list[Document]:
+        """获取最新的已完成索引文档。"""
+        from sqlalchemy import select as sa_select
+        result = await db.execute(
+            sa_select(Document)
+            .where(Document.status == "completed")
+            .order_by(Document.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
 
     async def query_general(self, query: str, chat_history: list = None, db=None) -> tuple[str, list]:
         """无文档上下文的通用聊天"""
