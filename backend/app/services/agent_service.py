@@ -8,17 +8,10 @@ from typing import Optional, List, Tuple
 from openai import AsyncOpenAI
 from agents import Agent, Runner, function_tool, OpenAIChatCompletionsModel, set_tracing_disabled
 
-from app.core.config import get_settings
-
-settings = get_settings()
+from app.services.system_config_service import get_llm_config
 
 # Disable agents SDK tracing — it sends data to OpenAI servers, not needed with DashScope
 set_tracing_disabled(True)
-
-# Set up env vars once at module load
-api_key = settings.DASHSCOPE_API_KEY or settings.OPENAI_API_KEY
-if api_key:
-    os.environ["OPENAI_API_KEY"] = api_key
 
 
 class TrackedPageIndexClient:
@@ -124,14 +117,27 @@ class TrackedChatCompletionsModel(OpenAIChatCompletionsModel):
         return result
 
 
-def create_model() -> TrackedChatCompletionsModel:
-    """Create TrackedChatCompletionsModel pointed at DashScope."""
+async def create_model() -> TrackedChatCompletionsModel:
+    """Create TrackedChatCompletionsModel from database config."""
+    llm_config = await get_llm_config()
+    
+    # 确定 API Key: 优先 DashScope，其次 OpenAI
+    api_key = llm_config["dashscope_key"] or llm_config["openai_key"]
+    base_url = llm_config["api_base_url"]
+    
+    # 设置环境变量供其他库使用
+    if api_key:
+        os.environ["OPENAI_API_KEY"] = api_key
+    if base_url:
+        os.environ["OPENAI_BASE_URL"] = base_url
+    
     client = AsyncOpenAI(
-        base_url=settings.OPENAI_BASE_URL,
-        api_key=settings.DASHSCOPE_API_KEY or settings.OPENAI_API_KEY,
+        base_url=base_url,
+        api_key=api_key,
     )
+    
     # Strip dashscope/ prefix if present (e.g. "dashscope/qwen-plus" -> "qwen-plus")
-    model_name = settings.DEFAULT_MODEL
+    model_name = llm_config["default_model"]
     if "/" in model_name:
         model_name = model_name.split("/", 1)[1]
 
