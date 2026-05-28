@@ -11,6 +11,13 @@ DEFAULT_CONFIGS = {
     "agent_max_turns": {"value": "5", "description": "Agent 最大 tool call 轮数"},
     "agent_max_tokens": {"value": "2048", "description": "单次 LLM 回答最大 token 数"},
     "agent_timeout_seconds": {"value": "60", "description": "Agent 整体超时秒数"},
+    # LLM 配置
+    "llm_default_model": {"value": "dashscope/qwen-plus", "description": "默认 LLM 模型 (LiteLLM 格式)"},
+    "llm_vision_model": {"value": "dashscope/qwen-vl-plus", "description": "视觉 LLM 模型"},
+    "llm_vision_enabled": {"value": "false", "description": "是否启用视觉功能 (true/false)"},
+    "llm_api_base_url": {"value": "https://dashscope.aliyuncs.com/compatible-mode/v1", "description": "API 基础 URL"},
+    "llm_dashscope_key": {"value": "", "description": "DashScope API Key"},
+    "llm_openai_key": {"value": "", "description": "OpenAI API Key (可选)"},
 }
 
 
@@ -84,3 +91,15 @@ async def init_default_configs():
         except Exception:
             await db.rollback()
             raise
+
+
+async def get_llm_config() -> dict:
+    """获取 LLM 配置，从数据库实时读取"""
+    return {
+        "default_model": await get_config("llm_default_model") or DEFAULT_CONFIGS["llm_default_model"]["value"],
+        "vision_model": await get_config("llm_vision_model") or DEFAULT_CONFIGS["llm_vision_model"]["value"],
+        "vision_enabled": (await get_config("llm_vision_enabled") or DEFAULT_CONFIGS["llm_vision_enabled"]["value"]).lower() == "true",
+        "api_base_url": await get_config("llm_api_base_url") or DEFAULT_CONFIGS["llm_api_base_url"]["value"],
+        "dashscope_key": await get_config("llm_dashscope_key") or "",
+        "openai_key": await get_config("llm_openai_key") or "",
+    }
