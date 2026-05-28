@@ -178,7 +178,7 @@ export const chatApi = {
     content: string,
     onDelta: (text: string) => void,
     onToolCall?: (tool: string) => void,
-    onDone?: (citations: number[]) => void,
+    onDone?: (citations: import('@/types').Citation[]) => void,
     onError?: (error: string) => void,
     signal?: AbortSignal,
   ): Promise<void> => {
@@ -313,14 +313,14 @@ export const folderApi = {
   },
 
   // Create folder
-  create: async (name: string, parentId?: string): Promise<Folder> => {
-    const response = await api.post('/folders', { name, parent_id: parentId })
+  create: async (name: string, parentId?: string, description?: string): Promise<Folder> => {
+    const response = await api.post('/folders', { name, parent_id: parentId, description })
     return response.data
   },
 
   // Rename folder
-  rename: async (id: string, name: string): Promise<Folder> => {
-    const response = await api.put(`/folders/${id}`, { name })
+  rename: async (id: string, name: string, description?: string): Promise<Folder> => {
+    const response = await api.put(`/folders/${id}`, { name, description })
     return response.data
   },
 
