@@ -1479,7 +1479,6 @@ const ChatPage = () => {
         }}
       >
         {/* Header */}
-        {(selectedDocsInfo.length > 0 || sidebarCollapsed) && (
           <div
             style={{
               padding: '16px 24px',
@@ -1597,7 +1596,6 @@ const ChatPage = () => {
               </Dropdown>
             </div>
           </div>
-        )}
 
         {/* Messages */}
         <div 
