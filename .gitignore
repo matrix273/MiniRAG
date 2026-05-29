@@ -44,3 +44,6 @@ uv.lock
 # 文档工具
 .claude/
 .superpowers/
+
+docs/
+.docs/
