@@ -23,9 +23,9 @@ export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
   const contentRef = useRef<HTMLDivElement>(null)
   const [iframeSrc, setIframeSrc] = useState<string>('')
   const [loading, setLoading] = useState(true)
-  const [scale, setScale] = useState(1)
   const resolvedDocId = docId || extractDocId(url)
   const baseWidthRef = useRef(PDF_DEFAULT_WIDTH)
+  const currentScaleRef = useRef(1)
   const resizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 加载 PDF 并设置 iframe src
@@ -65,6 +65,48 @@ export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
     return () => { cancelled = true }
   }, [url, page, resolvedDocId])
 
+  // 通过 DOM 直接应用缩放，避免 React 重渲染 iframe 导致 PDF 重置到第一页
+  const applyScale = useCallback((newScale: number) => {
+    currentScaleRef.current = newScale
+    const iframe = iframeRef.current
+    const wrapper = contentRef.current
+    if (!iframe || !wrapper) return
+
+    iframe.style.transform = `scale(${newScale})`
+    iframe.style.transformOrigin = 'top left'
+    iframe.style.position = 'absolute'
+    iframe.style.top = '0'
+    iframe.style.left = '0'
+    iframe.style.width = `${baseWidthRef.current}px`
+    iframe.style.height = '100%'
+
+    wrapper.style.width = `${baseWidthRef.current * newScale}px`
+
+    // 尝试获取 iframe 内容高度
+    let height = 0
+    try {
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
+      if (iframeDoc) {
+        height = iframeDoc.documentElement.scrollHeight
+      }
+    } catch {
+      // 跨域限制，无法访问 iframe 内容
+    }
+
+    if (!height || height <= 0) {
+      height = baseWidthRef.current * 1.414 * newScale
+    }
+
+    const containerHeight = scrollContainerRef.current?.clientHeight || 0
+    // 缩放后视觉高度必须铺满容器，因此 wrapper 高度至少为 containerHeight / scale
+    const minHeight = containerHeight / newScale
+    if (height < minHeight) {
+      height = minHeight
+    }
+
+    wrapper.style.height = `${height}px`
+  }, [])
+
   // 监听容器宽度变化，使用 CSS transform 缩放（不重新加载 iframe）
   useEffect(() => {
     if (!scrollContainerRef.current) return
@@ -78,40 +120,7 @@ export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
       resizeTimerRef.current = setTimeout(() => {
         if (cancelled) return
         const newScale = cw / baseWidthRef.current
-        setScale(newScale)
-        // 缩放后修正外层容器的高度，使其与缩放后的 iframe 内容匹配
-        if (contentRef.current) {
-          const iframe = contentRef.current.querySelector('iframe')
-          if (iframe) {
-            const wrapper = contentRef.current
-            // 尝试获取 iframe 实际高度，如果失败则使用估算值
-            let height = 0
-            try {
-              // 尝试从 iframe 内容获取高度
-              const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
-              if (iframeDoc) {
-                height = iframeDoc.documentElement.scrollHeight
-              }
-            } catch {
-              // 跨域限制，无法访问 iframe 内容
-            }
-            
-            // 如果无法获取实际高度，使用估算值
-            if (!height || height <= 0) {
-              // PDF A4 比例约 1.414，但使用更保守的比例以确保填满
-              height = baseWidthRef.current * 1.414 * newScale
-            }
-            
-            // 确保高度不小于容器高度
-            const containerHeight = scrollContainerRef.current?.clientHeight || 0
-            if (height < containerHeight) {
-              height = containerHeight
-            }
-            
-            wrapper.style.height = `${height}px`
-            wrapper.style.width = `${baseWidthRef.current * newScale}px`
-          }
-        }
+        applyScale(newScale)
       }, 50)
     })
 
@@ -121,7 +130,7 @@ export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
       if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current)
       observer.disconnect()
     }
-  }, [])
+  }, [applyScale])
 
   // 刷新 PDF 布局（不重新加载，不丢失位置）
   useEffect(() => {
@@ -130,12 +139,22 @@ export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
         const cw = scrollContainerRef.current.clientWidth
         if (cw > 0) {
           const newScale = cw / baseWidthRef.current
-          setScale(newScale)
+          applyScale(newScale)
         }
       }
     }
     return () => { delete (window as any).__pdfViewerRefresh }
-  }, [])
+  }, [applyScale])
+
+  // 组件挂载时应用初始缩放
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      const cw = scrollContainerRef.current.clientWidth
+      if (cw > 0) {
+        applyScale(cw / baseWidthRef.current)
+      }
+    }
+  }, [applyScale])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -184,7 +203,6 @@ export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
         <div
           ref={contentRef}
           style={{
-            width: scale > 0 ? `${baseWidthRef.current * scale}px` : '100%',
             position: 'relative',
           }}
         >
@@ -192,16 +210,9 @@ export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
             ref={iframeRef}
             src={iframeSrc}
             style={{
-              width: `${baseWidthRef.current}px`,
-              height: '100%',
               border: 'none',
               display: 'block',
               opacity: loading ? 0 : 1,
-              transform: `scale(${scale})`,
-              transformOrigin: 'top left',
-              position: scale > 0 ? 'absolute' : 'relative',
-              top: 0,
-              left: 0,
             }}
             title="PDF Preview"
             onLoad={() => setLoading(false)}
