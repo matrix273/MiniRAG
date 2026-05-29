@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useCallback } from 'react'
 import { fileCache } from '@/utils/fileCache'
 
 interface PDFViewerProps {
@@ -14,11 +14,19 @@ function extractDocId(url: string): string | undefined {
   return match?.[1]
 }
 
+// PDF 默认宽度（与浏览器 PDF 查看器的默认宽度一致）
+const PDF_DEFAULT_WIDTH = 800
+
 export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const [iframeSrc, setIframeSrc] = useState<string>('')
   const [loading, setLoading] = useState(true)
+  const [scale, setScale] = useState(1)
   const resolvedDocId = docId || extractDocId(url)
+  const baseWidthRef = useRef(PDF_DEFAULT_WIDTH)
+  const resizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 加载 PDF 并设置 iframe src
   useEffect(() => {
@@ -26,61 +34,87 @@ export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
 
     const loadPdf = async () => {
       setLoading(true)
-      
+
       if (!resolvedDocId) {
-        // 没有 docId，直接使用原始 URL
         if (!cancelled) {
-          setIframeSrc(`${url}#page=${page}&zoom=width`)
+          // 使用固定宽度，不使用 zoom=width，改为 CSS 缩放
+          setIframeSrc(`${url}#page=${page}`)
           setLoading(false)
         }
         return
       }
 
       try {
-        // 获取缓存的 object URL，如果没有则异步加载
         let objectUrl = fileCache.getObjectUrl(resolvedDocId, url)
-        
         if (!objectUrl) {
-          // 首次加载，从缓存获取或下载文件
           objectUrl = await fileCache.getObjectUrlAsync(resolvedDocId, url)
         }
-        
         if (!cancelled) {
-          setIframeSrc(`${objectUrl}#page=${page}&zoom=width`)
+          setIframeSrc(`${objectUrl}#page=${page}`)
           setLoading(false)
         }
       } catch {
-        // 缓存加载失败，回退到原始 URL
         if (!cancelled) {
-          setIframeSrc(`${url}#page=${page}&zoom=width`)
+          setIframeSrc(`${url}#page=${page}`)
           setLoading(false)
         }
       }
     }
 
     loadPdf()
-
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [url, page, resolvedDocId])
 
-  // 刷新 PDF iframe - 只用于修复布局问题
+  // 监听容器宽度变化，使用 CSS transform 缩放（不重新加载 iframe）
+  useEffect(() => {
+    if (!scrollContainerRef.current) return
+    let cancelled = false
+
+    const observer = new ResizeObserver((entries) => {
+      if (cancelled) return
+      const cw = entries[0]?.contentRect?.width
+      if (!cw || cw <= 0) return
+      if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current)
+      resizeTimerRef.current = setTimeout(() => {
+        if (cancelled) return
+        const newScale = cw / baseWidthRef.current
+        setScale(newScale)
+        // 缩放后修正外层容器的高度，使其与缩放后的 iframe 内容匹配
+        if (contentRef.current) {
+          const iframe = contentRef.current.querySelector('iframe')
+          if (iframe) {
+            const wrapper = contentRef.current
+            // iframe 内部高度未知，使用 scrollHeight 作为近似值
+            // 更可靠的方式：让 iframe 自己报告高度，这里用固定比例估算
+            // PDF A4 比例约 1.414
+            const estimatedHeight = baseWidthRef.current * 1.414 * newScale
+            wrapper.style.height = `${estimatedHeight}px`
+            wrapper.style.width = `${baseWidthRef.current * newScale}px`
+          }
+        }
+      }, 50)
+    })
+
+    observer.observe(scrollContainerRef.current)
+    return () => {
+      cancelled = true
+      if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current)
+      observer.disconnect()
+    }
+  }, [])
+
+  // 刷新 PDF 布局（不重新加载，不丢失位置）
   useEffect(() => {
     (window as any).__pdfViewerRefresh = () => {
-      if (iframeRef.current) {
-        const currentSrc = iframeRef.current.src
-        iframeRef.current.src = 'about:blank'
-        setTimeout(() => {
-          if (iframeRef.current) {
-            iframeRef.current.src = currentSrc
-          }
-        }, 50)
+      if (scrollContainerRef.current) {
+        const cw = scrollContainerRef.current.clientWidth
+        if (cw > 0) {
+          const newScale = cw / baseWidthRef.current
+          setScale(newScale)
+        }
       }
     }
-    return () => {
-      delete (window as any).__pdfViewerRefresh
-    }
+    return () => { delete (window as any).__pdfViewerRefresh }
   }, [])
 
   return (
@@ -104,12 +138,13 @@ export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
         </div>
       </div>
 
-      {/* PDF iframe */}
+      {/* PDF 缩放容器 */}
       <div
+        ref={scrollContainerRef}
         style={{
           flex: 1,
           minHeight: 0,
-          overflow: 'hidden',
+          overflow: 'auto',
           border: '1px solid #e5e7eb',
           borderTop: 'none',
           borderRadius: '0 0 8px 8px',
@@ -119,33 +154,41 @@ export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
       >
         {loading && (
           <div style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(255,255,255,0.8)',
-            zIndex: 10,
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(255,255,255,0.8)', zIndex: 10,
           }}>
             Loading...
           </div>
         )}
-        <iframe
-          ref={iframeRef}
-          src={iframeSrc}
+        <div
+          ref={contentRef}
           style={{
-            width: '100%',
-            height: '100%',
-            border: 'none',
-            display: 'block',
-            opacity: loading ? 0 : 1,
+            width: scale > 0 ? `${baseWidthRef.current * scale}px` : '100%',
+            minHeight: '100%',
+            position: 'relative',
           }}
-          title="PDF Preview"
-          onLoad={() => setLoading(false)}
-        />
+        >
+          <iframe
+            ref={iframeRef}
+            src={iframeSrc}
+            style={{
+              width: `${baseWidthRef.current}px`,
+              height: '100%',
+              minHeight: '100vh',
+              border: 'none',
+              display: 'block',
+              opacity: loading ? 0 : 1,
+              transform: `scale(${scale})`,
+              transformOrigin: 'top left',
+              position: scale > 0 ? 'absolute' : 'relative',
+              top: 0,
+              left: 0,
+            }}
+            title="PDF Preview"
+            onLoad={() => setLoading(false)}
+          />
+        </div>
       </div>
     </div>
   )
