@@ -631,12 +631,17 @@ const DocumentList = () => {
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, padding: '0 8px' }}>
           <Title level={5} style={{ margin: 0, fontSize: 14 }}>知识库</Title>
-          <Button
-            type="text"
-            icon={<FolderAddOutlined />}
-            onClick={() => handleCreateFolder(selectedFolderId ?? undefined)}
-            size="small"
-          />
+          <Tooltip title="创建新知识库">
+            <Button
+              type="primary"
+              icon={<FolderAddOutlined />}
+              onClick={() => handleCreateFolder(selectedFolderId ?? undefined)}
+              size="middle"
+              style={{ minWidth: 80 }}
+            >
+              新建
+            </Button>
+          </Tooltip>
         </div>
         <Tree
           treeData={rootDataNode}
