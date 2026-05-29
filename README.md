@@ -1,5 +1,7 @@
 # MiniRAG based on PageIndex
 
+[中文版](README_CN.md) | English
+
 An AI-powered document indexing and question-answering system. Supports multi-format document parsing, hierarchical tree structure indexing, intelligent Q&A, and document management.
 
 This project is a major refactoring of [PageIndex](https://github.com/VectifyAI/PageIndex), including backend architecture rewrite (FastAPI + SQLAlchemy async), React frontend interface, multi-format document parsing (Office suite), and vector search (Milvus Lite) integration.
