@@ -384,11 +384,14 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
                     // 保留 <pre> 标签，避免行内 code 被错误匹配到块级渲染路径
                     return <pre style={{ margin: 0, padding: 0, background: 'transparent', border: 'none', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit' }}>{children}</pre>
                   },
-                  code({ inline, className, children, ...props }: any) {
+                  code({ className, children, ...props }: any) {
+                    // react-markdown v9 不再传递 inline prop，
+                    // 改为通过 className 是否包含 language- 前缀来区分块级/行内代码
                     const match = /language-(\w+)/.exec(className || '')
-                    const language = match ? match[1] : 'text'
                     
-                    if (inline) {
+                    if (!match) {
+                      // 没有 language- 类 → 行内代码（单反引号）
+                      const isLongCode = String(children).includes('\n')
                       return (
                         <code
                           style={{
@@ -396,7 +399,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
                             padding: '2px 6px',
                             borderRadius: 4,
                             fontSize: 14,
-                            color: '#ef4444',
+                            color: '#1e293b',
+                            whiteSpace: isLongCode ? 'pre-wrap' : 'nowrap',
                           }}
                           {...props}
                         >
@@ -405,6 +409,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
                       )
                     }
                     
+                    const language = match[1]
                     return (
                       <div style={{ margin: '12px 0' }}>
                         <div
