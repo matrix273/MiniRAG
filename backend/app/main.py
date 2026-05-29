@@ -593,133 +593,6 @@ async def get_chat_messages(session_id: str, db: AsyncSession = Depends(get_db))
     return normalized
 
 
-@app.post("/api/chat/{session_id}/message", response_model=ChatMessageResponse)
-async def send_message(
-    session_id: str,
-    message_data: ChatMessageCreate,
-    db: AsyncSession = Depends(get_db)
-):
-    """Send a message and get AI response using PageIndex reasoning-based retrieval."""
-    import time as _time
-    import logging
-    _perf_log = logging.getLogger("perf")
-    _t_total = _time.perf_counter()
-
-    from sqlalchemy import select
-
-    # Get session
-    result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
-    session = result.scalar_one_or_none()
-
-    if not session:
-        raise HTTPException(status_code=404, detail="Chat session not found")
-
-    # 自动推断模式：每条消息都重新匹配文档
-    if session.is_auto:
-        import re as _re
-        _system_patterns = [
-            r'有哪些.{0,4}(文档|文件|资料|内容)',
-            r'当前.{0,6}(文档|文件|资料)',
-            r'列出.{0,4}(文档|文件)',
-            r'总共.{0,4}(文档|文件)',
-            r'几.{0,2}(个|份).{0,4}(文档|文件)',
-            r'有什么.{0,4}(文档|文件)',
-            r'(文档|文件).{0,4}列表',
-            r'(文档|文件).{0,4}数量',
-            r'帮我.{0,4}(整理|总结|归纳).{0,4}(全部|所有|所有)',
-        ]
-        is_system_query = any(_re.search(p, message_data.content) for p in _system_patterns)
-        
-        if is_system_query:
-            documents = []
-        else:
-            _t0 = _time.perf_counter()
-            matched_docs = await chat_service.match_documents_to_query(
-                message_data.content, db
-            )
-            _perf_log.info(f"[perf] match_documents: {_time.perf_counter()-_t0:.3f}s, matched={len(matched_docs)} docs")
-            documents = matched_docs
-    else:
-        document_ids = session.document_ids or ([session.document_id] if session.document_id else [])
-        documents = []
-        for doc_id in document_ids:
-            result = await db.execute(select(Document).where(Document.id == doc_id))
-            doc = result.scalar_one_or_none()
-            if doc and doc.status == "completed":
-                documents.append(doc)
-
-    # Save user message
-    user_message = ChatMessage(
-        session_id=session_id,
-        role="user",
-        content=message_data.content,
-    )
-    db.add(user_message)
-    await db.commit()
-
-    # Get chat history
-    result = await db.execute(
-        select(ChatMessage)
-        .where(ChatMessage.session_id == session_id)
-        .order_by(ChatMessage.created_at)
-    )
-    history = result.scalars().all()
-
-    chat_history = [
-        {"role": msg.role, "content": msg.content}
-        for msg in history[-10:]
-    ]
-
-    # Query AI
-    _t_query = _time.perf_counter()
-    try:
-        if documents:
-            if len(documents) == 1:
-                answer, citations = await chat_service.query_document(
-                    document=documents[0],
-                    query=message_data.content,
-                    chat_history=chat_history,
-                )
-            else:
-                answer, citations = await chat_service.query_documents(
-                    documents=documents,
-                    query=message_data.content,
-                    chat_history=chat_history,
-                )
-        else:
-            answer, citations = await chat_service.query_general(
-                message_data.content, chat_history, db
-            )
-    except Exception as e:
-        # Log error and return fallback response
-        import logging
-        logging.error(f"Error querying document: {e}")
-        answer = f"抱歉，处理您的问题时遇到错误：{str(e)}"
-        citations = []
-
-    _perf_log.info(f"[perf] ai_query: {_time.perf_counter()-_t_query:.3f}s, docs={len(documents)}")
-
-    # Save AI response
-    ai_message = ChatMessage(
-        session_id=session_id,
-        role="assistant",
-        content=answer,
-        citations=citations if citations else None,
-    )
-    db.add(ai_message)
-    await db.commit()
-
-    _perf_log.info(f"[perf] total: {_time.perf_counter()-_t_total:.3f}s, session={session_id[:8]}...")
-
-    return ChatMessageResponse(
-        id=ai_message.id,
-        role=ai_message.role,
-        content=ai_message.content,
-        citations=ai_message.citations,
-        created_at=ai_message.created_at,
-    )
-
-
 @app.post("/api/chat/{session_id}/message/stream")
 async def send_message_stream(
     session_id: str,
@@ -796,45 +669,21 @@ async def send_message_stream(
         full_text = ""
         citations = []
         from app.services.document_service import chat_service
+        from app.services.prompt_service import get_active_prompt
+        from app.services.system_config_service import get_llm_config
         try:
             if documents:
-                document = documents[0]
-                await doc_service._ensure_doc_in_client(document)
+                # 确保所有文档都加载到 client 内存中
+                for doc in documents:
+                    await doc_service._ensure_doc_in_client(doc)
                 doc_client = doc_service.client
 
-                from app.services.prompt_service import get_active_prompt
                 agent_prompt = await get_active_prompt("agent_system")
                 rag_template = await get_active_prompt("rag_template")
                 if rag_template:
                     agent_prompt = f"{agent_prompt}\n\n{rag_template}"
 
-                # 添加文档上下文信息（与 query_document 保持一致）
-                agent_prompt += f"\n\nDocument: {document.original_name}"
-                if document.doc_description:
-                    agent_prompt += f"\nDescription: {document.doc_description}"
-                if document.page_count:
-                    agent_prompt += f"\nPages: {document.page_count}"
-                
-                # 注入预计算的结构摘要
-                if document.structure_summary:
-                    agent_prompt += f"\n\nDocument Structure:\n{document.structure_summary}"
-                    agent_prompt += (
-                        "\n\nIMPORTANT: Document metadata and structure are already provided above. "
-                        "You ONLY have access to the get_page_content() tool. "
-                        "Call get_page_content(pages=\"5-7\") with tight page ranges to read specific content. "
-                        "Do NOT attempt to call get_document() or get_document_structure() — they are not available."
-                    )
-
-                # 添加聊天历史
-                if chat_history:
-                    history_text = "\n".join(
-                        f"{msg.get('role', 'user')}: {msg.get('content', '')}"
-                        for msg in chat_history[-5:]
-                    )
-                    agent_prompt += f"\n\nChat history:\n{history_text}"
-
                 # 从数据库获取 LLM 配置
-                from app.services.system_config_service import get_llm_config
                 llm_config = await get_llm_config()
                 
                 # 更新环境变量供 LiteLLM 使用
@@ -843,25 +692,140 @@ async def send_message_stream(
                     os.environ["OPENAI_API_KEY"] = api_key
                 if llm_config["api_base_url"]:
                     os.environ["OPENAI_BASE_URL"] = llm_config["api_base_url"]
-                
-                # 检查是否启用视觉功能
-                vision_enabled = llm_config["vision_enabled"]
-                if vision_enabled:
-                    agent_prompt += (
-                        "\n\nVISUAL MODE: This system supports visual analysis of PDF pages. "
-                        "When you need to analyze charts, diagrams, formulas, or visual layouts, "
-                        "use the get_page_images() or get_page_images_base64() tools to get page images. "
-                        "Then analyze the images to answer visual questions."
+
+                if len(documents) == 1:
+                    # 单文档：使用 Agent 流式（支持 get_page_content 等工具）
+                    document = documents[0]
+
+                    # 添加文档上下文信息
+                    agent_prompt += f"\n\nDocument: {document.original_name}"
+                    if document.doc_description:
+                        agent_prompt += f"\nDescription: {document.doc_description}"
+                    if document.page_count:
+                        agent_prompt += f"\nPages: {document.page_count}"
+                    
+                    # 注入预计算的结构摘要
+                    if document.structure_summary:
+                        agent_prompt += f"\n\nDocument Structure:\n{document.structure_summary}"
+                        agent_prompt += (
+                            "\n\nIMPORTANT: Document metadata and structure are already provided above. "
+                            "You ONLY have access to the get_page_content() tool. "
+                            "Call get_page_content(pages=\"5-7\") with tight page ranges to read specific content. "
+                            "Do NOT attempt to call get_document() or get_document_structure() — they are not available."
+                        )
+
+                    # 添加聊天历史
+                    if chat_history:
+                        history_text = "\n".join(
+                            f"{msg.get('role', 'user')}: {msg.get('content', '')}"
+                            for msg in chat_history[-5:]
+                        )
+                        agent_prompt += f"\n\nChat history:\n{history_text}"
+                    
+                    # 检查是否启用视觉功能
+                    vision_enabled = llm_config["vision_enabled"]
+                    if vision_enabled:
+                        agent_prompt += (
+                            "\n\nVISUAL MODE: This system supports visual analysis of PDF pages. "
+                            "When you need to analyze charts, diagrams, formulas, or visual layouts, "
+                            "use the get_page_images() or get_page_images_base64() tools to get page images. "
+                            "Then analyze the images to answer visual questions."
+                        )
+
+                    include_metadata_tools = not document.structure_summary
+                    agent, tracked = await create_agent(
+                        doc_client=doc_client,
+                        doc_id=document.id,
+                        system_prompt=agent_prompt,
+                        include_metadata_tools=include_metadata_tools,
+                        include_vision_tools=vision_enabled,
                     )
 
-                include_metadata_tools = not document.structure_summary
-                agent, tracked = await create_agent(
-                    doc_client=doc_client,
-                    doc_id=document.id,
-                    system_prompt=agent_prompt,
-                    include_metadata_tools=include_metadata_tools,
-                    include_vision_tools=vision_enabled,
-                )
+                    async for event in run_agent_streaming(agent, tracked, message_data.content):
+                        if event["type"] == "text_delta":
+                            full_text += str(event["content"])
+                            yield f"data: {json.dumps({'type': 'delta', 'content': event['content']})}\n\n"
+                        elif event["type"] == "tool_call":
+                            yield f"data: {json.dumps({'type': 'tool_call', 'tool': event['tool']})}\n\n"
+                        elif event["type"] == "done":
+                            citations = event.get("citations", [])
+                            full_text = str(event.get("full_text", full_text))
+                            formatted_citations_for_sse = None
+                            if citations and documents:
+                                document = documents[0]
+                                raw_cits = chat_service._extract_citations(
+                                    document, str(full_text), citations
+                                )
+                                formatted_citations_for_sse = [
+                                    {k: v for k, v in c.items() if k != 'index'}
+                                    for c in raw_cits
+                                ] if raw_cits else None
+                            yield f"data: {json.dumps({'type': 'done', 'citations': formatted_citations_for_sse or []})}\n\n"
+                        elif event["type"] == "error":
+                            full_text = f"Error: {event['message']}"
+                            yield f"data: {json.dumps({'type': 'error', 'message': event['message']})}\n\n"
+                else:
+                    # 多文档：合并所有文档上下文，使用直接流式 LLM 调用
+                    from app.services.document_service import _extract_structure_summary
+
+                    doc_sections = []
+                    for doc in documents:
+                        section = f"Document: {doc.original_name}"
+                        if doc.doc_description:
+                            section += f"\nDescription: {doc.doc_description}"
+                        if doc.page_count:
+                            section += f"\nPages: {doc.page_count}"
+                        structure_summary = _extract_structure_summary(doc.structure)
+                        if structure_summary and structure_summary != "No structure available":
+                            section += f"\nStructure:\n{structure_summary}"
+                        doc_sections.append(section)
+
+                    agent_prompt += "\n\n=== Available Documents ===\n\n"
+                    agent_prompt += "\n\n---\n\n".join(doc_sections)
+
+                    # 添加聊天历史
+                    if chat_history:
+                        history_text = "\n".join(
+                            f"{msg.get('role', 'user')}: {msg.get('content', '')}"
+                            for msg in chat_history[-5:]
+                        )
+                        agent_prompt += f"\n\nChat history:\n{history_text}"
+
+                    model = llm_config["default_model"]
+
+                    from litellm import acompletion
+                    response = await acompletion(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": agent_prompt},
+                            {"role": "user", "content": message_data.content},
+                        ],
+                        temperature=0.7,
+                        max_tokens=2000,
+                        stream=True,
+                    )
+
+                    async for chunk in response:
+                        if chunk.choices[0].delta.content:
+                            delta = chunk.choices[0].delta.content
+                            full_text += delta
+                            yield f"data: {json.dumps({'type': 'delta', 'content': delta})}\n\n"
+
+                    # 构建多文档 citations
+                    multi_citations = []
+                    for doc in documents:
+                        pages = doc.pages if hasattr(doc, 'pages') and doc.pages else []
+                        if pages:
+                            for pd in pages[:3]:
+                                if isinstance(pd, dict):
+                                    multi_citations.append({
+                                        "page": pd.get("page", 0),
+                                        "text": pd.get("content", "")[:2000],
+                                        "node_title": f"{doc.original_name} - Page {pd.get('page', 0)}",
+                                        "document_id": doc.id,
+                                    })
+                    citations = [c["page"] for c in multi_citations]
+                    yield f"data: {json.dumps({'type': 'done', 'citations': multi_citations[:5]})}\n\n"
             else:
                 agent, tracked = await create_agent(
                     doc_client=None,
@@ -869,53 +833,53 @@ async def send_message_stream(
                     system_prompt="你是一个有帮助的助手。",
                 )
 
-            async for event in run_agent_streaming(agent, tracked, message_data.content):
-                if event["type"] == "text_delta":
-                    full_text += str(event["content"])
-                    yield f"data: {json.dumps({'type': 'delta', 'content': event['content']})}\n\n"
-                elif event["type"] == "tool_call":
-                    yield f"data: {json.dumps({'type': 'tool_call', 'tool': event['tool']})}\n\n"
-                elif event["type"] == "done":
-                    citations = event.get("citations", [])
-                    full_text = str(event.get("full_text", full_text))
-                    # 格式化 citations（添加 document_id 等字段），发送给前端
-                    formatted_citations_for_sse = None
-                    if citations and documents:
-                        document = documents[0]
-                        raw_cits = chat_service._extract_citations(
-                            document, str(full_text), citations
-                        )
-                        formatted_citations_for_sse = [
-                            {k: v for k, v in c.items() if k != 'index'}
-                            for c in raw_cits
-                        ] if raw_cits else None
-                    yield f"data: {json.dumps({'type': 'done', 'citations': formatted_citations_for_sse or []})}\n\n"
-                elif event["type"] == "error":
-                    full_text = f"Error: {event['message']}"
-                    yield f"data: {json.dumps({'type': 'error', 'message': event['message']})}\n\n"
+                async for event in run_agent_streaming(agent, tracked, message_data.content):
+                    if event["type"] == "text_delta":
+                        full_text += str(event["content"])
+                        yield f"data: {json.dumps({'type': 'delta', 'content': event['content']})}\n\n"
+                    elif event["type"] == "tool_call":
+                        yield f"data: {json.dumps({'type': 'tool_call', 'tool': event['tool']})}\n\n"
+                    elif event["type"] == "done":
+                        yield f"data: {json.dumps({'type': 'done', 'citations': []})}\n\n"
+                    elif event["type"] == "error":
+                        full_text = f"Error: {event['message']}"
+                        yield f"data: {json.dumps({'type': 'error', 'message': event['message']})}\n\n"
         except asyncio.CancelledError:
-            # 用户点击"停止"导致请求被取消，静默处理
             pass
         except Exception as e:
             full_text = f"Error: {str(e)}"
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
         finally:
-            # Save AI response to DB（仅在有内容且未被取消时保存）
+            # Save AI response to DB
             if full_text:
                 try:
-                    # 转换 citations 格式：页码列表 -> Citation 对象列表
                     formatted_citations = None
-                    if citations and documents:
-                        document = documents[0]
-                        # 使用 _extract_citations 转换格式
-                        raw_citations = chat_service._extract_citations(
-                            document, str(full_text), citations
-                        )
-                        # 移除 index 字段，确保符合 Citation 模型
-                        formatted_citations = [
-                            {k: v for k, v in c.items() if k != 'index'}
-                            for c in raw_citations
-                        ] if raw_citations else None
+                    if documents:
+                        if len(documents) == 1 and citations:
+                            document = documents[0]
+                            raw_citations = chat_service._extract_citations(
+                                document, str(full_text), citations
+                            )
+                            formatted_citations = [
+                                {k: v for k, v in c.items() if k != 'index'}
+                                for c in raw_citations
+                            ] if raw_citations else None
+                        elif len(documents) > 1:
+                            # 多文档：重新构建 citations 用于 DB 保存
+                            from app.services.document_service import _extract_structure_summary
+                            all_citations = []
+                            for doc in documents:
+                                pages = doc.pages if hasattr(doc, 'pages') and doc.pages else []
+                                if pages:
+                                    for pd in pages[:3]:
+                                        if isinstance(pd, dict):
+                                            all_citations.append({
+                                                "page": pd.get("page", 0),
+                                                "text": pd.get("content", "")[:2000],
+                                                "node_title": f"{doc.original_name} - Page {pd.get('page', 0)}",
+                                                "document_id": doc.id,
+                                            })
+                            formatted_citations = all_citations[:5] if all_citations else None
 
                     async with async_session() as save_db:
                         ai_message = ChatMessage(
@@ -927,7 +891,6 @@ async def send_message_stream(
                         save_db.add(ai_message)
                         await save_db.commit()
                 except Exception:
-                    # 保存失败不影响响应（用户可能已断开连接）
                     pass
 
             try:

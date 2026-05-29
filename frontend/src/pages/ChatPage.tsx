@@ -15,6 +15,7 @@ import {
   MenuOutlined,
   CloseOutlined,
   PauseOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons'
 import { chatApi, documentApi, folderApi } from '@/services/api'
 import type { ChatSession, Document, Folder } from '@/types'
@@ -795,6 +796,36 @@ const ChatPage = () => {
     loadAllSessions()
   }, [])
 
+  // 选择的知识库变化时，加载对应的会话列表
+  useEffect(() => {
+    if (selectedDocs.length === 0) {
+      loadAllSessions()
+    } else {
+      handleSelectDocs(selectedDocs)
+    }
+  }, [selectedDocs])
+
+  // 键盘快捷键：Ctrl/Cmd + B 折叠/展开聊天记录侧边栏
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+B (Windows/Linux) 或 Cmd+B (Mac)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault()
+        const newCollapsed = !sidebarCollapsed
+        setSidebarCollapsed(newCollapsed)
+        localStorage.setItem('chatSidebarCollapsed', JSON.stringify(newCollapsed))
+        // 折叠/展开后刷新 PDF
+        setTimeout(() => {
+          const refreshFn = (window as any).__pdfViewerRefresh
+          if (refreshFn) refreshFn()
+        }, 100)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [sidebarCollapsed])
+
   const fetchFoldersAndDocs = async () => {
     try {
       const [folderList, docs] = await Promise.all([
@@ -1147,6 +1178,98 @@ const ChatPage = () => {
     })
   }
 
+  // 导出聊天记录为 Markdown
+  const exportChatToMarkdown = (onlySelected = false) => {
+    const msgsToExport = onlySelected
+      ? messages.filter(m => selectedMessages.has(m.id))
+      : messages
+
+    if (msgsToExport.length === 0) {
+      message.info('没有可导出的消息')
+      return
+    }
+
+    // 构建文档标题
+    const docTitle = selectedDocsInfo.length === 1
+      ? selectedDocsInfo[0]!.filename
+      : selectedDocsInfo.length > 1
+        ? `${selectedDocsInfo.length} 份文档`
+        : '全量历史会话'
+
+    const lines: string[] = []
+    lines.push(`# 聊天记录 — ${docTitle}`)
+    lines.push('')
+    lines.push(`> 导出时间: ${new Date().toLocaleString('zh-CN')}`)
+    lines.push('---')
+    lines.push('')
+
+    for (const msg of msgsToExport) {
+      const roleLabel = msg.role === 'user' ? '👤 用户' : msg.role === 'assistant' ? '🤖 AI' : '⚙️ 系统'
+      const time = new Date(msg.created_at).toLocaleString('zh-CN')
+      lines.push(`### ${roleLabel}`)
+      lines.push(`*${time}*`)
+      lines.push('')
+
+      if (msg.role === 'assistant') {
+        // 处理 AI 消息：将 citation 链接转为纯文本引用
+        let content = msg.content
+        // 匹配 [text](#citation-page-N) 格式的 citation 链接
+        content = content.replace(
+          /\[([^\]]*)\]\(#citation-page-(\d+)\)/g,
+          (_match, displayText, pageNum) => {
+            const pNum = parseInt(pageNum, 10)
+            // 尝试在 citations 数组中找到对应条目获取引用原文
+            const citation = msg.citations?.find(c => c.page === pNum)
+            const snippet = citation?.text
+              ? `: "${citation.text.slice(0, 80)}${citation.text.length > 80 ? '...' : ''}"`
+              : ''
+            return `**${displayText || `p.${pageNum}`}** *(引用 p.${pageNum}${snippet})*`
+          }
+        )
+        lines.push(content)
+      } else {
+        lines.push(msg.content)
+      }
+
+      // 如果 AI 消息有 citations，在消息末尾追加引用列表
+      if (msg.role === 'assistant' && msg.citations && msg.citations.length > 0) {
+        lines.push('')
+        lines.push('**参考引用:**')
+        const seen = new Set<string>()
+        for (const c of msg.citations) {
+          const key = `${c.page}-${c.text.slice(0, 30)}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          const snippet = c.text ? ` — "${c.text.slice(0, 100)}${c.text.length > 100 ? '...' : ''}"` : ''
+          lines.push(`- 第 ${c.page} 页${snippet}`)
+        }
+      }
+
+      lines.push('')
+      lines.push('---')
+      lines.push('')
+    }
+
+    const markdown = lines.join('\n')
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const safeTitle = docTitle.replace(/[^\w\u4e00-\u9fa5.-]/g, '_')
+    const now = new Date()
+    const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`
+    a.download = `聊天记录_${safeTitle}_${timestamp}.md`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+
+    message.success(`已导出 ${msgsToExport.length} 条消息`)
+    if (onlySelected) {
+      setSelectedMessages(new Set())
+    }
+  }
+
   return (
     <div 
       className="chat-container"
@@ -1174,54 +1297,67 @@ const ChatPage = () => {
       >
         {/* Collapse Button */}
         <div style={{ padding: 8, borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end' }}>
-          <Button
-            type="text"
-            size="small"
-            icon={<LeftOutlined />}
-            onClick={() => {
-              setSidebarCollapsed(true)
-              localStorage.setItem('chatSidebarCollapsed', JSON.stringify(true))
-              // 折叠后刷新 PDF
-              setTimeout(() => {
-                const refreshFn = (window as any).__pdfViewerRefresh
-                if (refreshFn) refreshFn()
-              }, 100)
-            }}
-            style={{ color: '#6b7280' }}
-          />
+          <Tooltip title="折叠聊天记录 (Ctrl/Cmd + B)">
+            <Button
+              type="text"
+              size="small"
+              icon={<LeftOutlined />}
+              onClick={() => {
+                setSidebarCollapsed(true)
+                localStorage.setItem('chatSidebarCollapsed', JSON.stringify(true))
+                // 折叠后刷新 PDF
+                setTimeout(() => {
+                  const refreshFn = (window as any).__pdfViewerRefresh
+                  if (refreshFn) refreshFn()
+                }, 100)
+              }}
+              style={{ color: '#6b7280' }}
+            />
+          </Tooltip>
         </div>
 
         {/* Document Selector - Tree Select (Multiple, Optional) */}
         <div style={{ padding: 16, borderBottom: '1px solid #e5e7eb' }}>
-          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8, color: '#6b7280' }}>
-            基于知识库 (可选，留空则自动匹配)
-          </Text>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text type="secondary" style={{ fontSize: 12, color: '#6b7280' }}>
+              基于知识库 (可选，留空则自动匹配)
+            </Text>
+            {selectedDocs.length > 0 && (
+              <Button
+                type="text"
+                size="small"
+                icon={<CloseOutlined />}
+                onClick={() => setSelectedDocs([])}
+                style={{
+                  fontSize: 11,
+                  color: '#ef4444',
+                  height: 22,
+                  padding: '0 6px',
+                  borderRadius: 4,
+                }}
+              >
+                清除
+              </Button>
+            )}
+          </div>
           <TreeSelect
             style={{ width: '100%' }}
-            value={selectedDocs.map(id => `doc:${id}`)}
+            value={selectedDocs.map(id => ({ value: `doc:${id}`, checked: true }))}
             treeData={treeData}
             placeholder="选择知识库（可选，留空自动匹配）"
             treeDefaultExpandAll
             showSearch
             multiple
             maxTagCount="responsive"
+            treeCheckStrictly
+            allowClear
             filterTreeNode={(input, node) =>
               String(node?.title ?? '').toLowerCase().includes(input.toLowerCase())
             }
-            onChange={(values: string[]) => {
-              // 将 folder:xxx 和 doc:xxx 全部解析为纯文档 ID 列表
-              const docIds = resolveTreeValues(values)
-
-              // 检查是否有新增的文档
-              const addedDocs = docIds.filter(id => !selectedDocs.includes(id))
-
-              if (addedDocs.length > 0) {
-                // 选择新文档时自动创建会话
-                handleSelectDocs(docIds)
-              } else if (docIds.length < selectedDocs.length) {
-                // 取消选择某些文档
-                handleSelectDocs(docIds)
-              }
+            onChange={(values: any[]) => {
+              // treeCheckStrictly 模式下 values 为 { value: string, checked: boolean }[]，提取 value 字符串
+              const stringValues = values.map(v => (typeof v === 'string' ? v : v.value))
+              const docIds = resolveTreeValues(stringValues)
               setSelectedDocs(docIds)
             }}
             treeCheckable
@@ -1298,19 +1434,21 @@ const ChatPage = () => {
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
               {sidebarCollapsed && (
-                <Button
-                  type="text"
-                  icon={<MenuOutlined />}
-                  onClick={() => {
-                    setSidebarCollapsed(false)
-                    localStorage.setItem('chatSidebarCollapsed', JSON.stringify(false))
-                    setTimeout(() => {
-                      const refreshFn = (window as any).__pdfViewerRefresh
-                      if (refreshFn) refreshFn()
-                    }, 100)
-                  }}
-                  style={{ marginRight: 4, flexShrink: 0 }}
-                />
+                <Tooltip title="展开聊天记录 (Ctrl/Cmd + B)">
+                  <Button
+                    type="text"
+                    icon={<MenuOutlined />}
+                    onClick={() => {
+                      setSidebarCollapsed(false)
+                      localStorage.setItem('chatSidebarCollapsed', JSON.stringify(false))
+                      setTimeout(() => {
+                        const refreshFn = (window as any).__pdfViewerRefresh
+                        if (refreshFn) refreshFn()
+                      }, 100)
+                    }}
+                    style={{ marginRight: 4, flexShrink: 0 }}
+                  />
+                </Tooltip>
               )}
               <div
                 style={{
@@ -1363,9 +1501,43 @@ const ChatPage = () => {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              <Tooltip title="More options">
-                <Button type="text" icon={<MoreOutlined />} />
-              </Tooltip>
+              <Dropdown
+                trigger={['click']}
+                menu={{
+                  items: [
+                    {
+                      key: 'export-all',
+                      icon: <DownloadOutlined />,
+                      label: '导出全部聊天记录',
+                      disabled: messages.length === 0,
+                      onClick: () => exportChatToMarkdown(false),
+                    },
+                    {
+                      key: 'export-selected',
+                      icon: <DownloadOutlined />,
+                      label: `导出选中消息 (${selectedMessages.size})`,
+                      disabled: selectedMessages.size === 0,
+                      onClick: () => exportChatToMarkdown(true),
+                    },
+                    { type: 'divider' },
+                    {
+                      key: 'clear-selection',
+                      label: selectedMessages.size > 0 ? '取消选择' : '全选消息',
+                      onClick: () => {
+                        if (selectedMessages.size > 0) {
+                          setSelectedMessages(new Set())
+                        } else {
+                          setSelectedMessages(new Set(messages.map(m => m.id)))
+                        }
+                      },
+                    },
+                  ],
+                }}
+              >
+                <Tooltip title="更多选项">
+                  <Button type="text" icon={<MoreOutlined />} />
+                </Tooltip>
+              </Dropdown>
             </div>
           </div>
         )}
@@ -1593,6 +1765,24 @@ const ChatPage = () => {
             }}
           >
             <span style={{ color: '#fff', fontSize: 13 }}>{selectedMessages.size} selected</span>
+            <button
+              onClick={() => exportChatToMarkdown(true)}
+              style={{
+                background: '#6366f1',
+                border: 'none',
+                borderRadius: 4,
+                padding: '4px 12px',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: 12,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <DownloadOutlined style={{ fontSize: 12 }} />
+              Export
+            </button>
             <button
               onClick={handleDeleteMessages}
               style={{

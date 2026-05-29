@@ -166,12 +166,6 @@ export const chatApi = {
     return response.data
   },
   
-  // Send message
-  sendMessage: async (sessionId: string, content: string): Promise<ChatMessage> => {
-    const response = await api.post(`/chat/${sessionId}/message`, { content })
-    return response.data
-  },
-
   // Send message with streaming (SSE)
   sendMessageStream: async (
     sessionId: string,
