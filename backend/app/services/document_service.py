@@ -130,8 +130,11 @@ class DocumentService:
                 )
                 
                 # Get document structure
-                structure_str = self.client.get_document_structure(indexed_doc_id)
-                structure = eval(structure_str) if isinstance(structure_str, str) else structure_str
+                # 注意：不能使用 get_document_structure()，因为它会移除 text 字段，
+                # 导致 Office 文件（xlsx/docx/pptx）的内容丢失。
+                # 直接从 client.documents 获取完整结构（含 text）。
+                indexed_doc = self.client.documents.get(indexed_doc_id, {})
+                structure = indexed_doc.get('structure', [])
                 
                 # Get document metadata
                 doc_info_str = self.client.get_document(indexed_doc_id)
@@ -147,7 +150,6 @@ class DocumentService:
                 
                 # 保存原始页面文本用于调试和验证
                 # PageIndexClient 会将 pages 存储在 client.documents 中
-                indexed_doc = self.client.documents.get(indexed_doc_id)
                 if indexed_doc and "pages" in indexed_doc:
                     doc.pages = indexed_doc["pages"]
 
