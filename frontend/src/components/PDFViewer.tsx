@@ -84,11 +84,31 @@ export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
           const iframe = contentRef.current.querySelector('iframe')
           if (iframe) {
             const wrapper = contentRef.current
-            // iframe 内部高度未知，使用 scrollHeight 作为近似值
-            // 更可靠的方式：让 iframe 自己报告高度，这里用固定比例估算
-            // PDF A4 比例约 1.414
-            const estimatedHeight = baseWidthRef.current * 1.414 * newScale
-            wrapper.style.height = `${estimatedHeight}px`
+            // 尝试获取 iframe 实际高度，如果失败则使用估算值
+            let height = 0
+            try {
+              // 尝试从 iframe 内容获取高度
+              const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
+              if (iframeDoc) {
+                height = iframeDoc.documentElement.scrollHeight
+              }
+            } catch {
+              // 跨域限制，无法访问 iframe 内容
+            }
+            
+            // 如果无法获取实际高度，使用估算值
+            if (!height || height <= 0) {
+              // PDF A4 比例约 1.414，但使用更保守的比例以确保填满
+              height = baseWidthRef.current * 1.414 * newScale
+            }
+            
+            // 确保高度不小于容器高度
+            const containerHeight = scrollContainerRef.current?.clientHeight || 0
+            if (height < containerHeight) {
+              height = containerHeight
+            }
+            
+            wrapper.style.height = `${height}px`
             wrapper.style.width = `${baseWidthRef.current * newScale}px`
           }
         }
@@ -165,7 +185,6 @@ export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
           ref={contentRef}
           style={{
             width: scale > 0 ? `${baseWidthRef.current * scale}px` : '100%',
-            minHeight: '100%',
             position: 'relative',
           }}
         >
@@ -175,7 +194,6 @@ export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
             style={{
               width: `${baseWidthRef.current}px`,
               height: '100%',
-              minHeight: '100vh',
               border: 'none',
               display: 'block',
               opacity: loading ? 0 : 1,
