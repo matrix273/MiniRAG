@@ -9,10 +9,10 @@ This project is a major refactoring of [PageIndex](https://github.com/VectifyAI/
 ## Screenshots
 
 Sidebar supports viewing original documents with clickable citation links:
-<img width="1647" height="940" alt="Screenshot 2026-05-29 20 03 44" src="https://github.com/user-attachments/assets/410b0571-ad1b-4711-a41c-05d38d9e0538" />
+![pdf preview](docs/images/pdf.png)
 
 Excel filtering support and message export to Markdown:
-<img width="1635" height="594" alt="Screenshot 2026-05-29 20 36 33" src="https://github.com/user-attachments/assets/154c6a1c-6bea-4d45-9157-2f826dcd55b9" />
+![pdf preview](docs/images/excel.png)
 
 ## Features
 

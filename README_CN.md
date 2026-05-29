@@ -6,9 +6,10 @@
 
 ## 部分截图
 边栏支持查看原文,支持点击链接跳转到引用页
-<img width="1647" height="940" alt="截屏2026-05-29 20 03 44" src="https://github.com/user-attachments/assets/410b0571-ad1b-4711-a41c-05d38d9e0538" />
-excel 支持筛选,消息支持导出markdown
-<img width="1635" height="594" alt="截屏2026-05-29 20 36 33" src="https://github.com/user-attachments/assets/154c6a1c-6bea-4d45-9157-2f826dcd55b9" />
+![pdf preview](docs/images/pdf.png)
+
+Excel filtering support and message export to Markdown:
+![pdf preview](docs/images/excel.png)
 
 ## 功能特性
 
