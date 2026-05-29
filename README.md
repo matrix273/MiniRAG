@@ -1,295 +1,303 @@
-# MiniRAG base on PageIndex
+# MiniRAG based on PageIndex
 
-基于 AI 推理的文档索引和问答系统。支持多格式文档解析、层级树结构索引、智能问答和文档管理。
+An AI-powered document indexing and question-answering system. Supports multi-format document parsing, hierarchical tree structure indexing, intelligent Q&A, and document management.
 
-本项目基于 [PageIndex](https://github.com/VectifyAI/PageIndex) 进行了大幅重构，包括后端架构重写（FastAPI + SQLAlchemy 异步）、前端 React 界面、多格式文档解析（Office 系列）、向量检索（Milvus Lite）集成等功能重构。
+This project is a major refactoring of [PageIndex](https://github.com/VectifyAI/PageIndex), including backend architecture rewrite (FastAPI + SQLAlchemy async), React frontend interface, multi-format document parsing (Office suite), and vector search (Milvus Lite) integration.
 
-## 功能特性
+## Screenshots
 
-- **多格式文档索引**：支持 PDF、Word、Excel、PowerPoint、Markdown 等多种文档格式
-- **层级树结构索引**：自动将文档解析为层级树结构，保留文档逻辑层次
-- **AI 推理式问答**：基于 OpenAI Agents SDK 的推理驱动检索，精准定位文档内容
-- **自动文档匹配**：利用向量嵌入（Milvus + DashScope text-embedding-v3）自动匹配相关问题文档
-- **流式回答**：支持 SSE 流式输出，实时展示 AI 回答过程
-- **可视化阅读**：内置 PDF/Markdown/Office 文件预览器
-- **智能引用**：AI 回答自动附带文档引用页码，支持一键跳转
-- **多会话管理**：支持多会话、知识库筛选和自动匹配模式
-- **Web 管理界面**：完整的文档管理、系统配置和聊天界面
+Sidebar supports viewing original documents with clickable citation links:
+<img width="1647" height="940" alt="Screenshot 2026-05-29 20 03 44" src="https://github.com/user-attachments/assets/410b0571-ad1b-4711-a41c-05d38d9e0538" />
 
-## 支持的文档格式
+Excel filtering support and message export to Markdown:
+<img width="1635" height="594" alt="Screenshot 2026-05-29 20 36 33" src="https://github.com/user-attachments/assets/154c6a1c-6bea-4d45-9157-2f826dcd55b9" />
 
-| 格式 | 扩展名 | 解析引擎 | 说明 |
-|------|--------|----------|------|
-| PDF | `.pdf` | PyMuPDF / PyPDF2 | 文字提取、视觉 RAG、层级索引 |
-| Word | `.docx` | python-docx | 提取标题、段落和格式信息 |
-| Excel | `.xlsx` | openpyxl | 提取工作表为带标题的内容块 |
-| PowerPoint | `.pptx` | python-pptx | 提取幻灯片内容 |
-| Markdown | `.md`, `.markdown` | 内置 Markdown 解析器 | 基于标题构建层级树结构 |
+## Features
 
-## 技术栈
+- **Multi-format Document Indexing**: Supports PDF, Word, Excel, PowerPoint, Markdown and other document formats
+- **Hierarchical Tree Structure Indexing**: Automatically parses documents into hierarchical tree structures, preserving document logical hierarchy
+- **AI Reasoning-based Q&A**: Reasoning-driven retrieval based on OpenAI Agents SDK for precise document content localization
+- **Automatic Document Matching**: Uses vector embeddings (Milvus + DashScope text-embedding-v3) to automatically match relevant question documents
+- **Streaming Responses**: Supports SSE streaming output, displaying AI answer process in real-time
+- **Visual Reading**: Built-in PDF/Markdown/Office file previewer
+- **Smart Citations**: AI answers automatically include document citation page numbers with one-click jump support
+- **Multi-session Management**: Supports multi-session, knowledge base filtering, and automatic matching mode
+- **Web Management Interface**: Complete document management, system configuration, and chat interface
 
-| 层级 | 技术 |
-|------|------|
-| 后端框架 | FastAPI 0.136 (Python 3.12+) |
-| ORM | SQLAlchemy 2.0 (异步, asyncpg) |
-| 数据库 | PostgreSQL 12+ |
-| AI / LLM | LiteLLM 1.83 (多模型支持), OpenAI Agents SDK |
-| 向量数据库 | Milvus Lite (嵌入式) |
-| 向量嵌入 | DashScope text-embedding-v3 |
-| 文档解析 | PyMuPDF, PyPDF2, python-docx, python-pptx, openpyxl |
-| 前端框架 | React 18 + TypeScript + Vite 6 |
-| UI 组件库 | Ant Design 5.22 |
-| PDF 预览 | pdfjs-dist |
-| 认证 | JWT (PyJWT) + bcrypt |
-| 部署 | Nginx, systemd, uvicorn |
+## Supported Document Formats
 
-## 项目结构
+| Format | Extensions | Parser Engine | Description |
+|--------|------------|---------------|-------------|
+| PDF | `.pdf` | PyMuPDF / PyPDF2 | Text extraction, visual RAG, hierarchical indexing |
+| Word | `.docx` | python-docx | Extract headings, paragraphs, and format information |
+| Excel | `.xlsx` | openpyxl | Extract worksheets as titled content blocks |
+| PowerPoint | `.pptx` | python-pptx | Extract slide content |
+| Markdown | `.md`, `.markdown` | Built-in Markdown parser | Build hierarchical tree structure based on headings |
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Backend Framework | FastAPI 0.136 (Python 3.12+) |
+| ORM | SQLAlchemy 2.0 (async, asyncpg) |
+| Database | PostgreSQL 12+ |
+| AI / LLM | LiteLLM 1.83 (multi-model support), OpenAI Agents SDK |
+| Vector Database | Milvus Lite (embedded) |
+| Vector Embedding | DashScope text-embedding-v3 |
+| Document Parsing | PyMuPDF, PyPDF2, python-docx, python-pptx, openpyxl |
+| Frontend Framework | React 18 + TypeScript + Vite 6 |
+| UI Component Library | Ant Design 5.22 |
+| PDF Preview | pdfjs-dist |
+| Authentication | JWT (PyJWT) + bcrypt |
+| Deployment | Nginx, systemd, uvicorn |
+
+## Project Structure
 
 ```
 kb/
-├── backend/                         # 后端服务 (FastAPI)
+├── backend/                         # Backend service (FastAPI)
 │   ├── app/
-│   │   ├── main.py                  # FastAPI 应用入口
+│   │   ├── main.py                  # FastAPI application entry
 │   │   ├── core/
-│   │   │   ├── config.py            # Pydantic 配置管理
-│   │   │   ├── deps.py              # 依赖注入
-│   │   │   └── security.py          # JWT 认证
+│   │   │   ├── config.py            # Pydantic configuration management
+│   │   │   ├── deps.py              # Dependency injection
+│   │   │   └── security.py          # JWT authentication
 │   │   ├── models/
-│   │   │   ├── database.py          # SQLAlchemy 模型 (Document, ChatSession 等)
-│   │   │   ├── base.py              # ORM 基类
-│   │   │   └── user.py              # 用户 / 角色 / 权限模型
-│   │   ├── schemas/                 # Pydantic 数据模式
+│   │   │   ├── database.py          # SQLAlchemy models (Document, ChatSession, etc.)
+│   │   │   ├── base.py              # ORM base class
+│   │   │   └── user.py              # User / Role / Permission models
+│   │   ├── schemas/                 # Pydantic data schemas
 │   │   ├── api/
-│   │   │   ├── documents.py         # 文档 CRUD API
-│   │   │   ├── auth.py              # 认证 API
-│   │   │   └── admin.py             # 管理后台 API
+│   │   │   ├── documents.py         # Document CRUD API
+│   │   │   ├── auth.py              # Authentication API
+│   │   │   └── admin.py             # Admin backend API
 │   │   ├── services/
-│   │   │   ├── document_service.py  # 文档索引 / 聊天服务
-│   │   │   ├── agent_service.py     # OpenAI Agents SDK 集成
-│   │   │   ├── vector_service.py    # Milvus Lite 向量搜索
+│   │   │   ├── document_service.py  # Document indexing / chat service
+│   │   │   ├── agent_service.py     # OpenAI Agents SDK integration
+│   │   │   ├── vector_service.py    # Milvus Lite vector search
 │   │   │   ├── system_config_service.py
-│   │   │   ├── prompt_service.py    # 提示词模板管理
+│   │   │   ├── prompt_service.py    # Prompt template management
 │   │   │   ├── auth_service.py
 │   │   │   ├── role_service.py
-│   │   │   └── indexing/            # 核心文档索引引擎
-│   │   │       ├── client.py        # PageIndexClient (主入口)
-│   │   │       ├── indexer.py       # 索引器工厂
-│   │   │       ├── pdf_indexer.py   # PDF 树索引
-│   │   │       ├── md_indexer.py    # Markdown 树索引
-│   │   │       ├── retrieval.py     # 检索工具
-│   │   │       ├── vision.py        # 视觉支持 (PDF 页面转图片)
-│   │   │       ├── utils.py         # 配置加载器、格式化工具
-│   │   │       └── parsers/         # 文档解析器
-│   │   │           ├── pdf.py       # PDF 文本提取
-│   │   │           ├── markdown.py  # Markdown 解析
-│   │   │           ├── docx.py      # DOCX 解析
-│   │   │           ├── xlsx.py      # XLSX 解析
-│   │   │           ├── pptx.py      # PPTX 解析
-│   │   │           ├── office_to_tree.py  # Office 统一入口
-│   │   │           └── tree_builder.py    # 通用树构建器
+│   │   │   └── indexing/            # Core document indexing engine
+│   │   │       ├── client.py        # PageIndexClient (main entry)
+│   │   │       ├── indexer.py       # Indexer factory
+│   │   │       ├── pdf_indexer.py   # PDF tree indexing
+│   │   │       ├── md_indexer.py    # Markdown tree indexing
+│   │   │       ├── retrieval.py     # Retrieval tools
+│   │   │       ├── vision.py        # Vision support (PDF page to image)
+│   │   │       ├── utils.py         # Configuration loader, formatting tools
+│   │   │       └── parsers/         # Document parsers
+│   │   │           ├── pdf.py       # PDF text extraction
+│   │   │           ├── markdown.py  # Markdown parsing
+│   │   │           ├── docx.py      # DOCX parsing
+│   │   │           ├── xlsx.py      # XLSX parsing
+│   │   │           ├── pptx.py      # PPTX parsing
+│   │   │           ├── office_to_tree.py  # Office unified entry
+│   │   │           └── tree_builder.py    # Universal tree builder
 │   │   └── utils/
-│   │       └── llm.py               # LLM 工具 (摘要、描述生成)
-│   ├── alembic/                     # 数据库迁移
-│   ├── .env.example                 # 环境变量示例
-│   └── pyproject.toml               # Python 项目配置
-├── frontend/                        # 前端应用 (React + TypeScript)
+│   │       └── llm.py               # LLM tools (summary, description generation)
+│   ├── alembic/                     # Database migrations
+│   ├── .env.example                 # Environment variables example
+│   └── pyproject.toml               # Python project configuration
+├── frontend/                        # Frontend application (React + TypeScript)
 │   ├── src/
 │   │   ├── pages/
-│   │   │   ├── ChatPage.tsx         # 聊天界面 (主要功能页面)
-│   │   │   ├── Dashboard.tsx        # 仪表盘
-│   │   │   ├── DocumentList.tsx     # 文档列表
-│   │   │   ├── DocumentDetail.tsx   # 文档详情
-│   │   │   ├── DocumentEdit.tsx     # 文档编辑
-│   │   │   ├── AdminPage.tsx        # 管理面板
-│   │   │   ├── PromptConfig.tsx     # 提示词配置
-│   │   │   ├── LandingPage.tsx      # 登录页
-│   │   │   ├── Login.tsx            # 登录表单
-│   │   │   └── Register.tsx         # 注册表单
+│   │   │   ├── ChatPage.tsx         # Chat interface (main functional page)
+│   │   │   ├── Dashboard.tsx        # Dashboard
+│   │   │   ├── DocumentList.tsx     # Document list
+│   │   │   ├── DocumentDetail.tsx   # Document details
+│   │   │   ├── DocumentEdit.tsx     # Document editing
+│   │   │   ├── AdminPage.tsx        # Admin panel
+│   │   │   ├── PromptConfig.tsx     # Prompt configuration
+│   │   │   ├── LandingPage.tsx      # Login page
+│   │   │   ├── Login.tsx            # Login form
+│   │   │   └── Register.tsx         # Registration form
 │   │   ├── components/
-│   │   │   ├── PDFViewer.tsx        # PDF 预览
-│   │   │   ├── MDViewer.tsx         # Markdown 渲染
-│   │   │   ├── OfficeViewer.tsx     # Office 文档预览
+│   │   │   ├── PDFViewer.tsx        # PDF preview
+│   │   │   ├── MDViewer.tsx         # Markdown rendering
+│   │   │   ├── OfficeViewer.tsx     # Office document preview
 │   │   │   ├── GenericFileViewer.tsx
-│   │   │   ├── ReferencePanel.tsx   # 引用面板
+│   │   │   ├── ReferencePanel.tsx   # Reference panel
 │   │   │   ├── CreateMarkdownModal.tsx
 │   │   │   └── ProtectedRoute.tsx
 │   │   ├── services/
-│   │   │   ├── api.ts              # API 客户端
-│   │   │   └── authApi.ts          # 认证 API
+│   │   │   ├── api.ts              # API client
+│   │   │   └── authApi.ts          # Authentication API
 │   │   ├── contexts/
-│   │   │   └── AuthContext.tsx      # 认证上下文
+│   │   │   └── AuthContext.tsx      # Authentication context
 │   │   ├── hooks/
 │   │   │   └── useAuth.ts
 │   │   ├── types/
-│   │   │   └── index.ts            # TypeScript 类型定义
+│   │   │   └── index.ts            # TypeScript type definitions
 │   │   └── utils/
-│   │       └── fileCache.ts        # 文件缓存工具
+│   │       └── fileCache.ts        # File cache utilities
 │   ├── package.json
-│   ├── vite.config.ts              # Vite 构建配置
+│   ├── vite.config.ts              # Vite build configuration
 │   └── tsconfig.json
-├── docs/                            # 项目文档
-├── nginx.conf                       # Nginx 反向代理配置
-├── DEPLOYMENT.md                    # 生产部署指南
-├── pyproject.toml                   # 顶层 Python 配置
-├── requirements.txt                 # pip 依赖
-└── README.md                        # 项目说明
+├── docs/                            # Project documentation
+├── nginx.conf                       # Nginx reverse proxy configuration
+├── DEPLOYMENT.md                    # Production deployment guide
+├── pyproject.toml                   # Top-level Python configuration
+├── requirements.txt                 # pip dependencies
+└── README.md                        # Project description
 ```
 
-## 快速开始
+## Quick Start
 
-### 前置条件
+### Prerequisites
 
 - Python 3.12+
 - Node.js 18+
 - PostgreSQL 12+
-- uv (Python 包管理器)
+- uv (Python package manager)
 
-### 1. 克隆项目
+### 1. Clone the Project
 
 ```bash
 git clone <repository-url>
 cd kb
 ```
 
-### 2. 后端启动
+### 2. Backend Startup
 
 ```bash
 cd backend
 
-# 安装依赖
+# Install dependencies
 uv sync
 
-# 配置环境变量
+# Configure environment variables
 cp .env.example .env
-# 编辑 .env 文件，配置以下必填项：
-#   DATABASE_URL=postgresql+asyncpg://用户名:密码@localhost:5432/pageindex
-#   JWT_SECRET_KEY=你的JWT密钥
+# Edit .env file and configure the following required items:
+#   DATABASE_URL=postgresql+asyncpg://username:password@localhost:5432/pageindex
+#   JWT_SECRET_KEY=your-jwt-secret-key
 
-# 创建 PostgreSQL 数据库
+# Create PostgreSQL database
 psql -U postgres -c "CREATE DATABASE pageindex;"
 
-# 启动后端服务（首次启动会自动创建表和初始化数据）
+# Start backend service (first startup will automatically create tables and initialize data)
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-**后端启动后**，访问 `http://localhost:8000` 可查看 API 文档（Swagger UI）。
+**After backend startup**, visit `http://localhost:8000` to view API documentation (Swagger UI).
 
-### 3. 前端启动
+### 3. Frontend Startup
 
-打开新的终端窗口：
+Open a new terminal window:
 
 ```bash
 cd frontend
 
-# 安装依赖
+# Install dependencies
 npm install
 
-# 启动开发服务器
+# Start development server
 npm run dev
 ```
 
-访问 `http://localhost:5173`，前端会自动代理 API 请求到后端。
+Visit `http://localhost:5173`, the frontend will automatically proxy API requests to the backend.
 
-### 4. 首次使用配置
+### 4. First Use Configuration
 
-1. 打开前端界面 `http://localhost:5173`
-2. 进入「系统配置 → LLM 配置」页面
-3. 配置以下项目：
-   - **默认模型**：如 `dashscope/qwen-plus`
-   - **API Key**：填入 DashScope 或 OpenAI 的 API Key（DashScope Key 从 [阿里云百炼](https://bailian.console.aliyun.com/cn-beijing?tab=model#/api-key) 申请）
-   - **视觉功能**：根据需要开启
-4. 上传文档开始使用
+1. Open the frontend interface `http://localhost:5173`
+2. Go to "System Configuration → LLM Configuration" page
+3. Configure the following items:
+   - **Default Model**: e.g., `dashscope/qwen-plus`
+   - **API Key**: Enter DashScope or OpenAI API key (DashScope key can be applied from [Alibaba Cloud Bailian](https://bailian.console.aliyun.com/cn-beijing?tab=model#/api-key))
+   - **Vision Functionality**: Enable as needed
+4. Upload documents to start using
 
-## 环境变量说明
+## Environment Variables
 
-| 变量名 | 说明 | 必填 | 默认值 |
-|--------|------|------|--------|
-| `DATABASE_URL` | PostgreSQL 连接字符串 | 是 | `postgresql+asyncpg://postgres:postgres@localhost:5432/pageindex` |
-| `JWT_SECRET_KEY` | JWT 认证密钥 | 是 | - |
-| `DEBUG` | 调试模式 | 否 | `False` |
-| `UPLOAD_DIR` | 文件上传目录 | 否 | `./uploads` |
-| `MAX_UPLOAD_SIZE` | 最大上传文件大小（字节） | 否 | `52428800` (50MB) |
-| `MILVUS_DB_PATH` | MilvusLite 数据库路径 | 否 | `./milvus_data.db` |
+| Variable | Description | Required | Default Value |
+|----------|-------------|----------|---------------|
+| `DATABASE_URL` | PostgreSQL connection string | Yes | `postgresql+asyncpg://postgres:postgres@localhost:5432/pageindex` |
+| `JWT_SECRET_KEY` | JWT authentication secret | Yes | - |
+| `DEBUG` | Debug mode | No | `False` |
+| `UPLOAD_DIR` | File upload directory | No | `./uploads` |
+| `MAX_UPLOAD_SIZE` | Maximum upload file size (bytes) | No | `52428800` (50MB) |
+| `MILVUS_DB_PATH` | MilvusLite database path | No | `./milvus_data.db` |
 
-## LLM 配置
+## LLM Configuration
 
-LLM 配置存储在数据库中，通过前端界面管理。首次使用需要在「系统配置 → LLM 配置」页面配置：
-- `llm_default_model`：默认模型
-- `llm_dashscope_key`：DashScope API Key（[点击申请](https://bailian.console.aliyun.com/cn-beijing?tab=model#/api-key)）
-- `llm_openai_key`：OpenAI API Key（可选）
-- `llm_vision_enabled`：视觉功能开关
-- `llm_api_base_url`：API 基础 URL
+LLM configuration is stored in the database and managed through the frontend interface. First-time use requires configuration on "System Configuration → LLM Configuration" page:
+- `llm_default_model`: Default model
+- `llm_dashscope_key`: DashScope API Key ([Apply here](https://bailian.console.aliyun.com/cn-beijing?tab=model#/api-key))
+- `llm_openai_key`: OpenAI API Key (optional)
+- `llm_vision_enabled`: Vision functionality switch
+- `llm_api_base_url`: API base URL
 
-也可在 `.env` 中直接配置 `DASHSCOPE_API_KEY`，优先级低于数据库配置。
+You can also configure `DASHSCOPE_API_KEY` directly in `.env`, with lower priority than database configuration.
 
-## 主要 API 端点
+## API Endpoints
 
-### 文档管理
+### Document Management
 
-| 端点 | 方法 | 描述 |
-|------|------|------|
-| `/api/documents/upload` | POST | 上传文档（支持多文件） |
-| `/api/documents` | GET | 文档列表 |
-| `/api/documents/{id}` | GET | 文档详情 |
-| `/api/documents/{id}/structure` | GET | 树结构 |
-| `/api/documents/{id}` | DELETE | 删除文档 |
-| `/api/documents/{id}/reindex` | POST | 重新索引 |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/documents/upload` | POST | Upload documents (supports multiple files) |
+| `/api/documents` | GET | Document list |
+| `/api/documents/{id}` | GET | Document details |
+| `/api/documents/{id}/structure` | GET | Tree structure |
+| `/api/documents/{id}` | DELETE | Delete document |
+| `/api/documents/{id}/reindex` | POST | Re-index document |
 
-### 聊天
+### Chat
 
-| 端点 | 方法 | 描述 |
-|------|------|------|
-| `/api/chat/session` | POST | 创建会话 |
-| `/api/chat/sessions` | GET | 会话列表 |
-| `/api/chat/{session_id}/messages` | GET | 消息列表 |
-| `/api/chat/message` | POST | 发送消息 |
-| `/api/chat/stream` | POST | 流式发送消息 |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/chat/session` | POST | Create session |
+| `/api/chat/sessions` | GET | Session list |
+| `/api/chat/{session_id}/messages` | GET | Message list |
+| `/api/chat/message` | POST | Send message |
+| `/api/chat/stream` | POST | Streaming message |
 
-## 文档处理流程
+## Document Processing Flow
 
-1. **上传**：通过 `/api/documents/upload` 上传文件，支持 PDF、DOCX、XLSX、PPTX、Markdown 格式
-2. **解析**：根据文档类型调用对应的解析器，提取文本和层级结构
-3. **索引**：将文档构建为层级树结构，每个节点包含位置、层级、摘要等信息
-4. **AI 摘要**：LLM 为树节点生成 AI 摘要，创建文档整体描述
-5. **向量索引**：文档描述通过 `text-embedding-v3` 嵌入并存储在 Milvus Lite 中（用于自动文档匹配）
-6. **检索 / 问答**：AI Agent 接收文档树结构，推理定位相关内容，通过工具获取具体内容后生成回答
+1. **Upload**: Upload files via `/api/documents/upload`, supports PDF, DOCX, XLSX, PPTX, Markdown formats
+2. **Parsing**: Call corresponding parser based on document type to extract text and hierarchical structure
+3. **Indexing**: Build documents into hierarchical tree structures, each node contains position, level, summary and other information
+4. **AI Summarization**: LLM generates AI summaries for tree nodes, creating overall document descriptions
+5. **Vector Indexing**: Document descriptions are embedded via `text-embedding-v3` and stored in Milvus Lite (for automatic document matching)
+6. **Retrieval / Q&A**: AI Agent receives document tree structure, reasons to locate relevant content, obtains specific content through tools to generate answers
 
-## 生产环境部署
+## Production Deployment
 
-生产环境部署请参考 [DEPLOYMENT.md](DEPLOYMENT.md)，包含：
-- Nginx 反向代理配置
-- systemd 服务管理
-- 域名和 HTTPS 配置
-- 数据库备份策略
+For production environment deployment, please refer to [DEPLOYMENT.md](DEPLOYMENT.md), which includes:
+- Nginx reverse proxy configuration
+- systemd service management
+- Domain and HTTPS configuration
+- Database backup strategy
 
-### 快速部署
+### Quick Deployment
 
 ```bash
-# 1. 前端构建
+# 1. Frontend build
 cd frontend
 npm run build
 
-# 2. 后端部署
+# 2. Backend deployment
 cd backend
-uv sync --no-dev  # 只安装生产依赖
+uv sync --no-dev  # Only install production dependencies
 
-# 3. 启动服务
+# 3. Start service
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-## 贡献
+## Contributing
 
-欢迎贡献代码！请遵循以下步骤：
+Contributions are welcome! Please follow these steps:
 
-1. Fork 项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 创建 Pull Request
+1. Fork the project
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Create a Pull Request
 
-## 问题反馈
+## Feedback
 
-如有问题或建议，请创建 [Issue](https://github.com/your-username/kb/issues)。
+If you have questions or suggestions, please create an [Issue](https://github.com/your-username/kb/issues).
 
 ## License
 
