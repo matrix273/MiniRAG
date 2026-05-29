@@ -827,10 +827,27 @@ async def send_message_stream(
                     citations = [c["page"] for c in multi_citations]
                     yield f"data: {json.dumps({'type': 'done', 'citations': multi_citations[:5]})}\n\n"
             else:
+                # 系统查询模式：注入实际文档列表，让 AI 能准确回答
+                from sqlalchemy import select as sa_select
+                result = await db.execute(
+                    sa_select(Document).where(Document.status == "completed").order_by(Document.created_at.desc())
+                )
+                all_docs = result.scalars().all()
+                system_prompt = "你是一个有帮助的助手，可以回答各种问题。"
+                if all_docs:
+                    doc_lines = []
+                    for d in all_docs:
+                        desc = f" - {d.doc_description[:100]}" if d.doc_description else ""
+                        pages = f" ({d.page_count}页)" if d.page_count else ""
+                        doc_lines.append(f"- {d.original_name}{pages}{desc}")
+                    system_prompt += "\n\n当前系统中已索引的文档列表（用户询问文档/文件相关问题时，如实列出以下文档，不要虚构不存在的文档）：\n" + "\n".join(doc_lines)
+                else:
+                    system_prompt += "\n\n当前系统中没有已索引的文档。"
+
                 agent, tracked = await create_agent(
                     doc_client=None,
                     doc_id="",
-                    system_prompt="你是一个有帮助的助手。",
+                    system_prompt=system_prompt,
                 )
 
                 async for event in run_agent_streaming(agent, tracked, message_data.content):

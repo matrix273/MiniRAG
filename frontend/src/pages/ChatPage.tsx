@@ -381,8 +381,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
                 rehypePlugins={[rehypeKatex]}
                 components={{
                   pre({ children }) {
-                    // pre 标签直接透传，不做额外处理
-                    return <>{children}</>
+                    // 保留 <pre> 标签，避免行内 code 被错误匹配到块级渲染路径
+                    return <pre style={{ margin: 0, padding: 0, background: 'transparent', border: 'none', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit' }}>{children}</pre>
                   },
                   code({ inline, className, children, ...props }: any) {
                     const match = /language-(\w+)/.exec(className || '')
@@ -764,6 +764,7 @@ const ChatPage = () => {
   })
   const [chatWidth, setChatWidth] = useState(50) // percentage
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const sessionSwitchRef = useRef(false) // 标记正在进行会话切换，跳过 useEffect 中的 handleSelectDocs
   // PDF preview panel state
   const [pdfPage, setPdfPage] = useState(1)
   const [pdfPreviewDocId, setPdfPreviewDocId] = useState<string | null>(null)
@@ -797,10 +798,14 @@ const ChatPage = () => {
   }, [])
 
   // 选择的知识库变化时，加载对应的会话列表
+  // 注意：selectedDocs 被置空时（清除按钮已显式调用 loadAllSessions），不再自动加载
+  // 标记 sessionSwitchRef 为 true 时跳过（由 handleSelectSession 设置，避免触发 handleSelectDocs）
   useEffect(() => {
-    if (selectedDocs.length === 0) {
-      loadAllSessions()
-    } else {
+    if (sessionSwitchRef.current) {
+      sessionSwitchRef.current = false
+      return
+    }
+    if (selectedDocs.length > 0) {
       handleSelectDocs(selectedDocs)
     }
   }, [selectedDocs])
@@ -1046,6 +1051,7 @@ const ChatPage = () => {
   }
 
   const handleSelectSession = async (sessionId: string) => {
+    sessionSwitchRef.current = true
     setCurrentSession(sessionId)
 
     // 加载会话消息
@@ -1056,8 +1062,16 @@ const ChatPage = () => {
     const session = sessions.find(s => s.id === sessionId)
     if (session) {
       const docIds = session.document_ids || (session.document_id ? [session.document_id] : [])
-      setSelectedDoc(docIds[0])
-      setSelectedDocs(docIds)
+      if (docIds.length > 0) {
+        setSelectedDoc(docIds[0])
+        setSelectedDocs(docIds)
+      } else {
+        // auto 会话无关联文档，仅重置 selectedDoc
+        setSelectedDoc(null)
+        // 避免 setSelectedDocs([]) 触发 useEffect → loadAllSessions 清掉刚选中的会话
+        // 只有当 selectedDocs 非空时才清空，否则保持不变（已经是 []）
+        setSelectedDocs(prev => prev.length > 0 ? [] : prev)
+      }
 
       // 切换会话时重置 PDF 预览状态，使其跟随新会话的文档
       setPdfPreviewDocId(null)
@@ -1347,12 +1361,16 @@ const ChatPage = () => {
             <Text type="secondary" style={{ fontSize: 12, color: '#6b7280' }}>
               基于知识库 (可选，留空则自动匹配)
             </Text>
-            {selectedDocs.length > 0 && (
+              {selectedDocs.length > 0 && (
               <Button
                 type="text"
                 size="small"
                 icon={<CloseOutlined />}
-                onClick={() => setSelectedDocs([])}
+                onClick={async () => {
+                  setSelectedDoc(null)
+                  setSelectedDocs([])
+                  await loadAllSessions()
+                }}
                 style={{
                   fontSize: 11,
                   color: '#ef4444',
@@ -1376,14 +1394,23 @@ const ChatPage = () => {
             maxTagCount="responsive"
             treeCheckStrictly
             allowClear
+            getPopupContainer={() => document.body}
             filterTreeNode={(input, node) =>
               String(node?.title ?? '').toLowerCase().includes(input.toLowerCase())
             }
-            onChange={(values: any[]) => {
+            onChange={async (values: any[]) => {
               // treeCheckStrictly 模式下 values 为 { value: string, checked: boolean }[]，提取 value 字符串
               const stringValues = values.map(v => (typeof v === 'string' ? v : v.value))
               const docIds = resolveTreeValues(stringValues)
-              setSelectedDocs(docIds)
+              if (docIds.length === 0) {
+                // TreeSelect 自带的 X/tag 关闭等操作清空时，同步重置 selectedDoc 并刷新全量会话
+                setSelectedDoc(null)
+                setSelectedDocs([])
+                await loadAllSessions()
+              } else {
+                setSelectedDoc(docIds[0])
+                setSelectedDocs(docIds)
+              }
             }}
             treeCheckable
             showCheckedStrategy={TreeSelect.SHOW_CHILD}
