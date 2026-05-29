@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -129,7 +129,7 @@ async def startup():
 async def upload_documents(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
-    folder_id: Optional[str] = None,
+    folder_id: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db)
 ):
     """Upload multiple documents (PDF or Markdown) and start indexing."""
