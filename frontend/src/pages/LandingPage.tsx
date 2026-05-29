@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth'
 const { Title, Paragraph } = Typography
 
 const features = [
-  { icon: <FileTextOutlined style={{ fontSize: 32, color: '#1890ff' }} />, title: '智能文档', desc: '上传 PDF 或 Markdown，自动索引和结构化' },
+  { icon: <FileTextOutlined style={{ fontSize: 32, color: '#1890ff' }} />, title: '智能文档', desc: '支持 PDF、Word、Excel、PPT、Markdown，自动索引和结构化' },
   { icon: <MessageOutlined style={{ fontSize: 32, color: '#52c41a' }} />, title: 'AI 对话', desc: '基于文档内容的智能问答，带引用溯源' },
   { icon: <FolderOutlined style={{ fontSize: 32, color: '#faad14' }} />, title: '文件管理', desc: '知识库层级组织，拖拽管理' },
   { icon: <SafetyOutlined style={{ fontSize: 32, color: '#f5222d' }} />, title: '访问控制', desc: '基于角色的权限管理，安全可靠' },
