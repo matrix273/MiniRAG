@@ -1232,8 +1232,11 @@ const ChatPage = () => {
     for (const msg of msgsToExport) {
       const roleLabel = msg.role === 'user' ? '👤 用户' : msg.role === 'assistant' ? '🤖 AI' : '⚙️ 系统'
       const time = new Date(msg.created_at).toLocaleString('zh-CN')
-      lines.push(`### ${roleLabel}`)
-      lines.push(`*${time}*`)
+      const hasCitationLinks = msg.role === 'assistant' && /\(#citation-page-\d+\)/.test(msg.content)
+
+      // 消息分隔符 + 角色标识
+      lines.push('---')
+      lines.push(`### ${roleLabel} — *${time}*`)
       lines.push('')
 
       if (msg.role === 'assistant') {
@@ -1257,23 +1260,19 @@ const ChatPage = () => {
         lines.push(msg.content)
       }
 
-      // 如果 AI 消息有 citations，在消息末尾追加引用列表
-      if (msg.role === 'assistant' && msg.citations && msg.citations.length > 0) {
+      // 仅当 AI 回答中实际包含可点击的引用链接时，才追加参考引用列表
+      if (hasCitationLinks && msg.citations && msg.citations.length > 0) {
         lines.push('')
-        lines.push('**参考引用:**')
+        lines.push('> 📖 **参考引用**')
         const seen = new Set<string>()
         for (const c of msg.citations) {
           const key = `${c.page}-${c.text.slice(0, 30)}`
           if (seen.has(key)) continue
           seen.add(key)
           const snippet = c.text ? ` — "${c.text.slice(0, 100)}${c.text.length > 100 ? '...' : ''}"` : ''
-          lines.push(`- 第 ${c.page} 页${snippet}`)
+          lines.push(`> - 第 ${c.page} 页${snippet}`)
         }
       }
-
-      lines.push('')
-      lines.push('---')
-      lines.push('')
     }
 
     const markdown = lines.join('\n')
