@@ -1189,17 +1189,43 @@ const ChatPage = () => {
       return
     }
 
-    // 构建文档标题
-    const docTitle = selectedDocsInfo.length === 1
-      ? selectedDocsInfo[0]!.filename
-      : selectedDocsInfo.length > 1
-        ? `${selectedDocsInfo.length} 份文档`
-        : '全量历史会话'
+    // 构建文档标题和已选文档列表
+    let docTitle: string
+    let docListLines: string[] = []
+
+    if (selectedDocs.length > 0) {
+      const names = selectedDocsInfo.map(d => d!.filename)
+      docTitle = names.length === 1 ? names[0] : `${names.length} 份文档`
+      docListLines = ['', '**已选文档:**', ...names.map(n => `- ${n}`), '']
+    } else {
+      // 自动匹配模式：从消息 citations 中收集实际引用的文档
+      const referencedDocIds = new Set<string>()
+      const refDocNames: string[] = []
+      for (const msg of msgsToExport) {
+        for (const c of msg.citations || []) {
+          if (c.document_id && !referencedDocIds.has(c.document_id)) {
+            referencedDocIds.add(c.document_id)
+            const doc = documents.find(d => d.id === c.document_id)
+            if (doc) refDocNames.push(doc.filename)
+          }
+        }
+      }
+      if (refDocNames.length > 0) {
+        docTitle = `自动匹配 — ${refDocNames.length} 份文档`
+        docListLines = ['', '**自动匹配文档:**', ...refDocNames.map(n => `- ${n}`), '']
+      } else {
+        docTitle = '全量历史会话'
+        docListLines = ['', '*自动匹配模式 — 未指定知识库*', '']
+      }
+    }
 
     const lines: string[] = []
     lines.push(`# 聊天记录 — ${docTitle}`)
     lines.push('')
     lines.push(`> 导出时间: ${new Date().toLocaleString('zh-CN')}`)
+    if (docListLines.length > 0) {
+      lines.push(...docListLines)
+    }
     lines.push('---')
     lines.push('')
 
