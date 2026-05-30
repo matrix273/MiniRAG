@@ -21,6 +21,7 @@ import { chatApi, documentApi, folderApi } from '@/services/api'
 import type { ChatSession, Document, Folder } from '@/types'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
+import remarkGfm from 'remark-gfm'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -377,7 +378,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
           ) : (
             <div className="markdown-body" style={{ color: '#343541', lineHeight: 1.7 }}>
               <ReactMarkdown
-                remarkPlugins={[remarkMath]}
+                remarkPlugins={[remarkMath, remarkGfm]}
                 rehypePlugins={[rehypeKatex]}
                 components={{
                   pre({ children }) {
@@ -1002,15 +1003,17 @@ const ChatPage = () => {
         (tool) => {
           console.log('Tool call:', tool)
         },
-        // onDone: 完成 — 将格式化的 citations 设置到消息中
-        (citations) => {
-          if (citations && citations.length > 0) {
-            setMessages(prev => prev.map(msg => 
-              msg.id === aiMsgId 
-                ? { ...msg, citations }
-                : msg
-            ))
-          }
+        // onDone: 完成 — 将格式化的 citations 设置到消息中，如果提供 full_text 则用它替换累积的文本
+        (citations, fullText) => {
+          setMessages(prev => prev.map(msg => 
+            msg.id === aiMsgId 
+              ? { 
+                  ...msg, 
+                  citations: citations && citations.length > 0 ? citations : msg.citations,
+                  content: fullText || msg.content
+                }
+              : msg
+          ))
         },
         // onError: 错误
         (error) => {
