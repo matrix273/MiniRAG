@@ -781,7 +781,7 @@ async def send_message_stream(
                                     {k: v for k, v in c.items() if k != 'index'}
                                     for c in raw_cits
                                 ] if raw_cits else None
-                            yield f"data: {json.dumps({'type': 'done', 'citations': formatted_citations_for_sse or []})}\n\n"
+                            yield f"data: {json.dumps({'type': 'done', 'citations': formatted_citations_for_sse or [], 'full_text': full_text})}\n\n"
                         elif event["type"] == "error":
                             full_text = f"Error: {event['message']}"
                             yield f"data: {json.dumps({'type': 'error', 'message': event['message']})}\n\n"
@@ -803,6 +803,16 @@ async def send_message_stream(
 
                     agent_prompt += "\n\n=== Available Documents ===\n\n"
                     agent_prompt += "\n\n---\n\n".join(doc_sections)
+                    
+                    # 重要：多文档查询模式下，不要使用工具
+                    agent_prompt += (
+                        "\n\nIMPORTANT: This is a multi-document query mode. "
+                        "You do NOT have access to any tools (get_document, get_document_structure, get_page_content). "
+                        "The document structures are already provided above. "
+                        "Answer directly based on the provided document structures. "
+                        "Do NOT output tool calls or describe your analysis process. "
+                        "Provide the final answer directly."
+                    )
 
                     # 添加聊天历史
                     if chat_history:
@@ -826,11 +836,64 @@ async def send_message_stream(
                         stream=True,
                     )
 
+                    # 流式输出过滤器：实时拦截 tool_code 块，避免模型幻想输出工具调用代码
+                    _in_tool_block = False
+                    _stream_buf = ""
+                    _tool_start = "```tool_code"
+
                     async for chunk in response:
                         if chunk.choices[0].delta.content:
                             delta = chunk.choices[0].delta.content
-                            full_text += delta
-                            yield f"data: {json.dumps({'type': 'delta', 'content': delta})}\n\n"
+                            full_text += delta  # 完整文本仍需累积用于 done 事件清理
+                            _stream_buf += delta
+
+                            while _stream_buf:
+                                if not _in_tool_block:
+                                    # 检测 tool_code 块起始标记
+                                    idx = _stream_buf.find(_tool_start)
+                                    if idx == -1:
+                                        # 检查尾部是否可能是 tool_start 的前缀，避免截断
+                                        tail_len = 0
+                                        for i in range(1, len(_tool_start)):
+                                            if _stream_buf.endswith(_tool_start[:i]):
+                                                tail_len = i
+                                                break
+                                        if tail_len:
+                                            yield_part = _stream_buf[:-tail_len]
+                                            if yield_part:
+                                                yield f"data: {json.dumps({'type': 'delta', 'content': yield_part})}\n\n"
+                                            _stream_buf = _stream_buf[-tail_len:]
+                                        else:
+                                            yield f"data: {json.dumps({'type': 'delta', 'content': _stream_buf})}\n\n"
+                                            _stream_buf = ""
+                                        break
+                                    else:
+                                        # 发现 tool_code，先输出标记之前的内容
+                                        yield_part = _stream_buf[:idx]
+                                        if yield_part:
+                                            yield f"data: {json.dumps({'type': 'delta', 'content': yield_part})}\n\n"
+                                        _stream_buf = _stream_buf[idx + len(_tool_start):]
+                                        _in_tool_block = True
+                                else:
+                                    # 在 tool_code 块内，等待结束标记 ```（可能前面有换行也可能没有）
+                                    end_idx = _stream_buf.find("\n```")
+                                    marker_len = 4
+                                    if end_idx < 0:
+                                        end_idx = _stream_buf.find("```")
+                                        marker_len = 3
+                                    if end_idx >= 0:
+                                        _stream_buf = _stream_buf[end_idx + marker_len:]
+                                        _in_tool_block = False
+                                    else:
+                                        _stream_buf = ""
+                                        break
+                    # 循环结束后，如果状态还在 tool_block 内但接着是正常内容，处理剩余
+                    if _in_tool_block and "\n" not in _stream_buf:
+                        # 不完整的 tool block 结尾，丢弃
+                        _in_tool_block = False
+                        _stream_buf = ""
+                    if _stream_buf and not _in_tool_block:
+                        yield f"data: {json.dumps({'type': 'delta', 'content': _stream_buf})}\n\n"
 
                     # 构建多文档 citations
                     multi_citations = []
@@ -846,7 +909,10 @@ async def send_message_stream(
                                         "document_id": doc.id,
                                     })
                     citations = [c["page"] for c in multi_citations]
-                    yield f"data: {json.dumps({'type': 'done', 'citations': multi_citations[:5]})}\n\n"
+                    # 清理工具引用
+                    cleaned_text = chat_service._cleanup_tool_references(full_text)
+                    # 发送清理后的完整文本
+                    yield f"data: {json.dumps({'type': 'done', 'citations': multi_citations[:5], 'full_text': cleaned_text})}\n\n"
             else:
                 # 系统查询模式：注入实际文档列表，让 AI 能准确回答
                 from sqlalchemy import select as sa_select
@@ -878,7 +944,7 @@ async def send_message_stream(
                     elif event["type"] == "tool_call":
                         yield f"data: {json.dumps({'type': 'tool_call', 'tool': event['tool']})}\n\n"
                     elif event["type"] == "done":
-                        yield f"data: {json.dumps({'type': 'done', 'citations': []})}\n\n"
+                        yield f"data: {json.dumps({'type': 'done', 'citations': [], 'full_text': full_text})}\n\n"
                     elif event["type"] == "error":
                         full_text = f"Error: {event['message']}"
                         yield f"data: {json.dumps({'type': 'error', 'message': event['message']})}\n\n"
@@ -928,11 +994,15 @@ async def send_message_stream(
                         )
                         save_db.add(ai_message)
                         await save_db.commit()
+                except asyncio.CancelledError:
+                    pass
                 except Exception:
                     pass
 
             try:
                 yield "data: [DONE]\n\n"
+            except asyncio.CancelledError:
+                pass
             except Exception:
                 pass
 
