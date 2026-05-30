@@ -148,17 +148,21 @@ async def get_db() -> AsyncSession:
             yield session
             await session.commit()
         except asyncio.CancelledError:
-            # 请求被客户端取消（如用户点击"停止"），静默回滚避免 terminate 报错
+            # 请求被客户端取消（如用户点击"停止"），静默回滚，不重新抛出避免噪音日志
             try:
                 await session.rollback()
+            except asyncio.CancelledError:
+                pass
             except Exception:
                 pass
-            raise
+            # 不重新抛出 CancelledError，让连接正常关闭
         except Exception:
             await session.rollback()
             raise
         finally:
             try:
                 await session.close()
+            except asyncio.CancelledError:
+                pass
             except Exception:
                 pass
