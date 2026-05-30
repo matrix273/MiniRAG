@@ -172,7 +172,7 @@ export const chatApi = {
     content: string,
     onDelta: (text: string) => void,
     onToolCall?: (tool: string) => void,
-    onDone?: (citations: import('@/types').Citation[]) => void,
+    onDone?: (citations: import('@/types').Citation[], fullText?: string) => void,
     onError?: (error: string) => void,
     signal?: AbortSignal,
   ): Promise<void> => {
@@ -231,7 +231,7 @@ export const chatApi = {
                   onToolCall?.(event.tool)
                   break
                 case 'done':
-                  onDone?.(event.citations)
+                  onDone?.(event.citations, event.full_text)
                   break
                 case 'error':
                   onError?.(event.message)
