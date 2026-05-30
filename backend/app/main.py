@@ -13,15 +13,36 @@ import json
 from app.core.config import get_settings
 settings = get_settings()
 
-# 配置性能日志
+# 配置日志 (loguru)
 import logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+import sys
+from loguru import logger
+
+# 移除默认 handler
+logger.remove()
+
+# 添加带颜色和时间戳的控制台输出
+logger.add(
+    sys.stdout,
+    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> - <level>{level: <8}</level> - <cyan>{name}</cyan> - {message}",
+    level="INFO",
+    colorize=True,
 )
-logging.getLogger("perf").setLevel(logging.INFO)
-# 抑制 LiteLLM 远程模型定价获取失败的 WARNING
+
+# 桥接标准 logging -> loguru，这样项目中所有 logging.xxx() 调用都走 loguru
+class InterceptHandler(logging.Handler):
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            level = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+        logger.opt(depth=6, exception=record.exc_info).log(level, record.getMessage())
+
+logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
+
+# 抑制第三方库日志
 logging.getLogger("LiteLLM").setLevel(logging.ERROR)
+logging.getLogger("LiteLLM").propagate = False
 
 # LiteLLM 直接使用 DASHSCOPE_API_KEY 环境变量
 if settings.DASHSCOPE_API_KEY:
