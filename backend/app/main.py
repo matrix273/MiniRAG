@@ -345,7 +345,7 @@ async def get_document_file(
 ):
     """Stream the original document file for PDF preview."""
     from sqlalchemy import select
-    from fastapi.responses import FileResponse
+    from fastapi.responses import FileResponse, Response
     import hashlib
     import os
     
@@ -378,7 +378,7 @@ async def get_document_file(
     # Handle If-None-Match: return 304 Not Modified if ETag matches
     if_none_match = request.headers.get("if-none-match")
     if if_none_match and if_none_match.strip('"') == etag:
-        return JSONResponse(status_code=304, content=None, headers={
+        return Response(status_code=304, headers={
             "ETag": f'"{etag}"',
             "Cache-Control": "public, max-age=3600",
         })
