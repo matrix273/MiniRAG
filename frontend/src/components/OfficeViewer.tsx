@@ -347,7 +347,7 @@ function XlsxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
         {/* 表头行选择 */}
         {maxHeaderOptions > 1 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ fontSize: 12, color: '#666', whiteSpace: 'nowrap' }}>表头行:</span>
+            <span style={{ fontSize: 12, color: '#666', whiteSpace: 'nowrap' }}>Header row:</span>
             <select
               value={headerRowIndex}
               onChange={(e) => setHeaderRow(parseInt(e.target.value))}
@@ -364,7 +364,7 @@ function XlsxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
                 const preview = (sheetData.allRows[i] || []).slice(0, 3).filter(Boolean).join(', ')
                 return (
                   <option key={i} value={i}>
-                    第{i + 1}行 {preview ? `- ${preview}${(sheetData.allRows[i] || []).length > 3 ? '...' : ''}` : '(空)'}
+                    Row {i + 1} {preview ? `- ${preview}${(sheetData.allRows[i] || []).length > 3 ? '...' : ''}` : '(empty)'}
                   </option>
                 )
               })}
@@ -385,7 +385,7 @@ function XlsxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
             fontSize: 12,
           }}
         >
-          {showFilters ? '隐藏筛选' : '显示筛选'}
+          {showFilters ? 'Hide filters' : 'Show filters'}
         </button>
         {Object.keys(filters).some((k) => filters[parseInt(k)]) && (
           <button
@@ -400,13 +400,13 @@ function XlsxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
               fontSize: 12,
             }}
           >
-            清除筛选
+            Clear filters
           </button>
         )}
         <span style={{ fontSize: 12, color: '#999', whiteSpace: 'nowrap' }}>
           {filteredRows.length > visibleCount
-            ? `显示 ${visibleCount} / ${filteredRows.length} 行（滚动加载更多）`
-            : `${filteredRows.length} / ${dataRows.length} 行`}
+            ? `Showing ${visibleCount} / ${filteredRows.length} rows (scroll for more)`
+            : `${filteredRows.length} / ${dataRows.length} rows`}
         </span>
       </div>
 
@@ -504,7 +504,7 @@ function XlsxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
                     maxWidth: 300,
                   }}
                 >
-                  {h || <span style={{ color: '#ccc', fontStyle: 'italic' }}>空</span>}
+                  {h || <span style={{ color: '#ccc', fontStyle: 'italic' }}>(empty)</span>}
                 </th>
               ))}
             </tr>
@@ -523,7 +523,7 @@ function XlsxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
                       color: '#999',
                     }}
                   >
-                    没有匹配的数据
+                    No matching data
                   </td>
                 </tr>
               ) : (

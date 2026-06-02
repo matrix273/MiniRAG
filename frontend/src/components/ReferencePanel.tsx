@@ -103,7 +103,7 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
         }}
       >
         <div style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>
-          引用原文
+          Reference Source
         </div>
         <button
           onClick={onClose}
@@ -173,7 +173,7 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
             {loading ? (
               <div style={{ textAlign: 'center', padding: 20, color: '#9ca3af' }}>
                 <LoadingOutlined style={{ fontSize: 20 }} />
-                <div style={{ marginTop: 8, fontSize: 13 }}>加载中...</div>
+                <div style={{ marginTop: 8, fontSize: 13 }}>Loading...</div>
               </div>
             ) : (
               // 显示文档预览
@@ -207,7 +207,7 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
                   </div>
                 ) : (
                   <div style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>
-                    无法加载文档预览
+                    Unable to load document preview
                   </div>
                 )}
               </div>
@@ -215,7 +215,7 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
           </div>
         ) : (
           <div style={{ color: '#9ca3af', textAlign: 'center', marginTop: 40 }}>
-            点击引用标记查看原文
+            Click a citation to view the source
           </div>
         )}
       </div>

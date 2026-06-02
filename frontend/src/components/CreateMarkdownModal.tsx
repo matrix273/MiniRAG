@@ -57,29 +57,29 @@ const CreateMarkdownModal: React.FC<CreateMarkdownModalProps> = ({
 
   return (
     <Modal
-      title="创建 Markdown 文档"
+      title="Create Markdown Document"
       open={visible}
       onOk={handleCreate}
       onCancel={handleCancel}
       confirmLoading={loading}
-      okText="创建"
-      cancelText="取消"
+      okText="Create"
+      cancelText="Cancel"
     >
       <Form form={form} layout="vertical">
         <Form.Item
           name="filename"
-          label="文件名"
+          label="Filename"
           initialValue="untitled"
         >
-          <Input addonAfter=".md" placeholder="输入文件名" />
+          <Input addonAfter=".md" placeholder="Enter filename" />
         </Form.Item>
         <Form.Item
           name="folder_id"
-          label="保存到知识库"
+          label="Save to Knowledge Base"
           initialValue={selectedFolderId}
         >
           <TreeSelect
-            placeholder="选择知识库（可选）"
+            placeholder="Select knowledge base (optional)"
             treeData={convertToTreeData(folders)}
             allowClear
             treeDefaultExpandAll

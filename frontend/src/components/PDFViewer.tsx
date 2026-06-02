@@ -173,7 +173,7 @@ export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
         }}
       >
         <div style={{ fontSize: 13, color: '#374151' }}>
-          第 {page} 页
+          Page {page}
         </div>
       </div>
 

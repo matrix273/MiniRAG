@@ -21,9 +21,9 @@ export default function GenericFileViewer({
   const getDescription = () => {
     switch (fileType) {
       case 'pptx':
-        return 'PowerPoint 文档不支持在浏览器中预览，请下载后查看'
+        return 'PowerPoint documents cannot be previewed in the browser. Please download to view.'
       default:
-        return `此文件格式 (${fileType.toUpperCase()}) 不支持在浏览器中预览，请下载后查看`
+        return `This file format (${fileType.toUpperCase()}) cannot be previewed in the browser. Please download to view.`
     }
   }
 
@@ -54,7 +54,7 @@ export default function GenericFileViewer({
         target="_blank"
         rel="noopener noreferrer"
       >
-        下载文件
+        Download File
       </Button>
     </div>
   )
