@@ -157,8 +157,8 @@ kb/
 ### 1. Clone the Project
 
 ```bash
-git clone <repository-url>
-cd kb
+git clone https://github.com/matrix273/MiniRAG.git
+cd MiniRAG
 ```
 
 ### 2. Backend Startup
@@ -176,7 +176,7 @@ cp .env.example .env
 #   JWT_SECRET_KEY=your-jwt-secret-key
 
 # Create PostgreSQL database
-psql -U postgres -c "CREATE DATABASE pageindex;"
+psql -U postgres -c "CREATE DATABASE kb;"
 
 # Start backend service (first startup will automatically create tables and initialize data)
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

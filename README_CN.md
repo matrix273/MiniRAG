@@ -154,8 +154,8 @@ kb/
 ### 1. 克隆项目
 
 ```bash
-git clone <repository-url>
-cd kb
+git clone https://github.com/matrix273/MiniRAG.git
+cd MiniRAG
 ```
 
 ### 2. 后端启动
@@ -211,7 +211,7 @@ npm run dev
 
 | 变量名 | 说明 | 必填 | 默认值 |
 |--------|------|------|--------|
-| `DATABASE_URL` | PostgreSQL 连接字符串 | 是 | `postgresql+asyncpg://postgres:postgres@localhost:5432/pageindex` |
+| `DATABASE_URL` | PostgreSQL 连接字符串 | 是 | `postgresql+asyncpg://postgres:postgres@localhost:5432/kb` |
 | `JWT_SECRET_KEY` | JWT 认证密钥 | 是 | - |
 | `DEBUG` | 调试模式 | 否 | `False` |
 | `UPLOAD_DIR` | 文件上传目录 | 否 | `./uploads` |
