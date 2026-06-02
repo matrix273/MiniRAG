@@ -299,7 +299,7 @@ Contributions are welcome! Please follow these steps:
 
 ## Feedback
 
-If you have questions or suggestions, please create an [Issue](https://github.com/your-username/kb/issues).
+If you have questions or suggestions, please create an [Issue](https://github.com/matrix273/MiniRAG/issues).
 
 ## License
 
