@@ -194,7 +194,7 @@ const SessionItem: React.FC<{
             {session.title}
           </div>
           <div style={{ fontSize: 12, color: '#9ca3af' }}>
-            {new Date(session.created_at).toLocaleString('zh-CN', { 
+            {new Date(session.created_at).toLocaleString('en-US', { 
               year: 'numeric', 
               month: '2-digit', 
               day: '2-digit',
@@ -586,7 +586,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
                             fontSize: 'inherit',
                             transition: 'all 0.2s',
                           }}
-                          title="查看引用原文"
+                          title="View citation source"
                         >
                           {children}
                         </button>
@@ -1207,7 +1207,7 @@ const ChatPage = () => {
       : messages
 
     if (msgsToExport.length === 0) {
-      message.info('没有可导出的消息')
+      message.info('No messages to export')
       return
     }
 
@@ -1217,8 +1217,8 @@ const ChatPage = () => {
 
     if (selectedDocs.length > 0) {
       const names = selectedDocsInfo.map(d => d!.filename)
-      docTitle = names.length === 1 ? names[0] : `${names.length} 份文档`
-      docListLines = ['', '**已选文档:**', ...names.map(n => `- ${n}`), '']
+      docTitle = names.length === 1 ? names[0] : `${names.length} documents`
+      docListLines = ['', '**Selected documents:**', ...names.map(n => `- ${n}`), '']
     } else {
       // 自动匹配模式：从消息 citations 中收集实际引用的文档
       const referencedDocIds = new Set<string>()
@@ -1233,18 +1233,18 @@ const ChatPage = () => {
         }
       }
       if (refDocNames.length > 0) {
-        docTitle = `自动匹配 — ${refDocNames.length} 份文档`
-        docListLines = ['', '**自动匹配文档:**', ...refDocNames.map(n => `- ${n}`), '']
+        docTitle = `Auto-matched — ${refDocNames.length} documents`
+        docListLines = ['', '**Auto-matched documents:**', ...refDocNames.map(n => `- ${n}`), '']
       } else {
-        docTitle = '全量历史会话'
-        docListLines = ['', '*自动匹配模式 — 未指定知识库*', '']
+        docTitle = 'auto match file'
+        docListLines = ['', '*Auto-match mode — no knowledge base specified*', '']
       }
     }
 
     const lines: string[] = []
-    lines.push(`# 聊天记录 — ${docTitle}`)
+    lines.push(`# Chat History — ${docTitle}`)
     lines.push('')
-    lines.push(`> 导出时间: ${new Date().toLocaleString('zh-CN')}`)
+    lines.push(`> Exported: ${new Date().toLocaleString('en-US')}`)
     if (docListLines.length > 0) {
       lines.push(...docListLines)
     }
@@ -1252,8 +1252,8 @@ const ChatPage = () => {
     lines.push('')
 
     for (const msg of msgsToExport) {
-      const roleLabel = msg.role === 'user' ? '👤 用户' : msg.role === 'assistant' ? '🤖 AI' : '⚙️ 系统'
-      const time = new Date(msg.created_at).toLocaleString('zh-CN')
+      const roleLabel = msg.role === 'user' ? '👤 User' : msg.role === 'assistant' ? '🤖 AI' : '⚙️ System'
+      const time = new Date(msg.created_at).toLocaleString('en-US')
       const hasCitationLinks = msg.role === 'assistant' && /\(#citation-page-\d+\)/.test(msg.content)
 
       // 消息分隔符 + 角色标识
@@ -1292,7 +1292,7 @@ const ChatPage = () => {
           if (seen.has(key)) continue
           seen.add(key)
           const snippet = c.text ? ` — "${c.text.slice(0, 100)}${c.text.length > 100 ? '...' : ''}"` : ''
-          lines.push(`> - 第 ${c.page} 页${snippet}`)
+          lines.push(`> - Page ${c.page}${snippet}`)
         }
       }
     }
@@ -1305,13 +1305,13 @@ const ChatPage = () => {
     const safeTitle = docTitle.replace(/[^\w\u4e00-\u9fa5.-]/g, '_')
     const now = new Date()
     const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`
-    a.download = `聊天记录_${safeTitle}_${timestamp}.md`
+    a.download = `chat_${safeTitle}_${timestamp}.md`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
 
-    message.success(`已导出 ${msgsToExport.length} 条消息`)
+    message.success(`Exported ${msgsToExport.length} messages`)
     if (onlySelected) {
       setSelectedMessages(new Set())
     }
@@ -1344,7 +1344,7 @@ const ChatPage = () => {
       >
         {/* Collapse Button */}
         <div style={{ padding: 8, borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end' }}>
-          <Tooltip title="折叠聊天记录 (Ctrl/Cmd + B)">
+          <Tooltip title="Collapse chat history (Ctrl/Cmd + B)">
             <Button
               type="text"
               size="small"
@@ -1367,7 +1367,7 @@ const ChatPage = () => {
         <div style={{ padding: 16, borderBottom: '1px solid #e5e7eb' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
             <Text type="secondary" style={{ fontSize: 12, color: '#6b7280' }}>
-              基于知识库 (可选，留空则自动匹配)
+              Based on knowledge base (optional, leave empty for auto-match)
             </Text>
               {selectedDocs.length > 0 && (
               <Button
@@ -1387,7 +1387,7 @@ const ChatPage = () => {
                   borderRadius: 4,
                 }}
               >
-                清除
+                Clear
               </Button>
             )}
           </div>
@@ -1395,7 +1395,7 @@ const ChatPage = () => {
             style={{ width: '100%' }}
             value={selectedDocs.map(id => ({ value: `doc:${id}`, checked: true }))}
             treeData={treeData}
-            placeholder="选择知识库（可选，留空自动匹配）"
+            placeholder="Select knowledge base (optional, leave empty for auto-match)"
             treeDefaultExpandAll
             showSearch
             multiple
@@ -1439,7 +1439,7 @@ const ChatPage = () => {
               background: '#111827',
             }}
           >
-            {selectedDocs.length > 0 ? `与 ${selectedDocs.length} 个知识库对话` : '新建对话 (自动匹配)'}
+            {selectedDocs.length > 0 ? `Chat with ${selectedDocs.length} knowledge base(s)` : 'New Chat (Auto-match)'}
           </Button>
         </div>
 
@@ -1493,7 +1493,7 @@ const ChatPage = () => {
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
               {sidebarCollapsed && (
-                <Tooltip title="展开聊天记录 (Ctrl/Cmd + B)">
+                <Tooltip title="Expand chat history (Ctrl/Cmd + B)">
                   <Button
                     type="text"
                     icon={<MenuOutlined />}
@@ -1525,7 +1525,7 @@ const ChatPage = () => {
               </div>
               <div style={{ minWidth: 0 }}>
                 {selectedDocsInfo.length === 0 ? (
-                  <div style={{ fontWeight: 500, fontSize: 14, color: '#6b7280' }}>全量历史会话</div>
+                  <div style={{ fontWeight: 500, fontSize: 14, color: '#6b7280' }}>auto match file</div>
                 ) : selectedDocsInfo.length === 1 ? (
                   <>
                     <div style={{ fontWeight: 500, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedDocsInfo[0]!.filename}</div>
@@ -1567,21 +1567,21 @@ const ChatPage = () => {
                     {
                       key: 'export-all',
                       icon: <DownloadOutlined />,
-                      label: '导出全部聊天记录',
+                      label: 'Export all chat history',
                       disabled: messages.length === 0,
                       onClick: () => exportChatToMarkdown(false),
                     },
                     {
                       key: 'export-selected',
                       icon: <DownloadOutlined />,
-                      label: `导出选中消息 (${selectedMessages.size})`,
+                      label: `Export selected messages (${selectedMessages.size})`,
                       disabled: selectedMessages.size === 0,
                       onClick: () => exportChatToMarkdown(true),
                     },
                     { type: 'divider' },
                     {
                       key: 'clear-selection',
-                      label: selectedMessages.size > 0 ? '取消选择' : '全选消息',
+                      label: selectedMessages.size > 0 ? 'Deselect all' : 'Select all messages',
                       onClick: () => {
                         if (selectedMessages.size > 0) {
                           setSelectedMessages(new Set())
@@ -1593,7 +1593,7 @@ const ChatPage = () => {
                   ],
                 }}
               >
-                <Tooltip title="更多选项">
+                <Tooltip title="More options">
                   <Button type="text" icon={<MoreOutlined />} />
                 </Tooltip>
               </Dropdown>
@@ -1643,8 +1643,8 @@ const ChatPage = () => {
               <div style={{ fontSize: 14, textAlign: 'center', maxWidth: 480 }}>
                 {selectedDocsInfo.length === 0 ? (
                   <>
-                    直接提问，我会自动匹配最相关的知识库来回答。<br />
-                    <span style={{ color: '#9ca3af' }}>你也可以在左侧选择特定知识库进行针对性提问。</span>
+                    Ask questions directly, I'll auto-match the most relevant knowledge base to answer.<br />
+                    <span style={{ color: '#9ca3af' }}>You can also select a specific knowledge base on the left.</span>
                   </>
                 ) : selectedDocsInfo.length === 1 ? (
                   <>Ask questions about <strong>{selectedDocsInfo[0]?.filename}</strong></>
@@ -1758,7 +1758,7 @@ const ChatPage = () => {
         )}
 
         {/* PDF Preview Toggle Button - 右侧中央折叠按钮 */}
-        <Tooltip title={showPdfOnly || showReferencePanel ? "关闭知识库预览" : "显示知识库预览"}>
+        <Tooltip title={showPdfOnly || showReferencePanel ? "Close knowledge base preview" : "Show knowledge base preview"}>
           <button
             onClick={() => {
               if (showPdfOnly || showReferencePanel) {
@@ -1799,7 +1799,7 @@ const ChatPage = () => {
           >
             <FileTextOutlined style={{ fontSize: 16, color: (showPdfOnly || showReferencePanel) ? '#fff' : '#6b7280' }} />
             <span style={{ fontSize: 10, color: (showPdfOnly || showReferencePanel) ? '#fff' : '#6b7280', writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
-              知识库
+              KB
             </span>
           </button>
         </Tooltip>
@@ -2038,7 +2038,7 @@ const ChatPage = () => {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>
-                      知识库预览
+                      Knowledge Base Preview
                     </div>
                     {selectedDocs.length > 1 && (
                       <select
@@ -2095,7 +2095,7 @@ const ChatPage = () => {
                             >
                               <LeftOutlined />
                             </button>
-                            <span style={{ fontSize: 12, color: '#6b7280' }}>第 {pdfPage} 页</span>
+                            <span style={{ fontSize: 12, color: '#6b7280' }}>Page {pdfPage}</span>
                             <button
                               onClick={() => setPdfPage(pdfPage + 1)}
                               style={{
@@ -2140,7 +2140,7 @@ const ChatPage = () => {
                   {(() => {
                     const previewDocId = pdfPreviewDocId || selectedDoc
                     if (!previewDocId) {
-                      return <div style={{ padding: 20, color: '#9ca3af', textAlign: 'center' }}>请选择文档</div>
+                      return <div style={{ padding: 20, color: '#9ca3af', textAlign: 'center' }}>Select a document</div>
                     }
                     const previewDoc = documents.find(d => d.id === previewDocId)
                     const docType = previewDoc?.doc_type || 'pdf'

@@ -39,7 +39,7 @@ const DocumentEdit: React.FC = () => {
 
       setLastSaved(new Date())
     } catch (error) {
-      message.error('加载文档失败')
+      message.error('Failed to load document')
       navigate('/documents')
     } finally {
       setLoading(false)
@@ -55,7 +55,7 @@ const DocumentEdit: React.FC = () => {
       message.success(result.message)
       setLastSaved(new Date())
     } catch (error) {
-      message.error('保存失败，请重试')
+      message.error('Failed to save, please try again')
     } finally {
       setSaving(false)
     }
@@ -84,7 +84,7 @@ const DocumentEdit: React.FC = () => {
 
   return (
     <div style={{ height: 'calc(100vh - 112px)', display: 'flex', flexDirection: 'column', backgroundColor: isDark ? '#1e1e1e' : '#f5f5f5', color: isDark ? '#fff' : '#000', transition: 'background-color 0.3s, color 0.3s' }}>
-      {/* 头部工具栏 */}
+      {/* Header toolbar */}
       <Card
         size="small"
         style={{ marginBottom: 8, backgroundColor: '#fff', borderColor: '#f0f0f0' }}
@@ -96,16 +96,16 @@ const DocumentEdit: React.FC = () => {
               icon={<ArrowLeftOutlined />}
               onClick={() => navigate('/documents')}
             >
-              返回
+              Back
             </Button>
             <FileTextOutlined />
             <Title level={5} style={{ margin: 0 }}>
-              {document?.filename || '文档'}
+              {document?.filename || 'Document'}
             </Title>
           </Space>
 
           <Space>
-            <Tooltip title={isDark ? "切换到亮色模式" : "切换到暗色模式"}>
+            <Tooltip title={isDark ? "Switch to light mode" : "Switch to dark mode"}>
               <Button
                 icon={isDark ? <BulbFilled /> : <BulbOutlined />}
                 onClick={() => setIsDark(!isDark)}
@@ -113,7 +113,7 @@ const DocumentEdit: React.FC = () => {
             </Tooltip>
             {lastSaved && (
               <span style={{ color: '#999', fontSize: 12 }}>
-                最后保存: {lastSaved.toLocaleTimeString()}
+                Last saved: {lastSaved.toLocaleTimeString()}
               </span>
             )}
             <Tooltip title="Ctrl+S">
@@ -123,14 +123,14 @@ const DocumentEdit: React.FC = () => {
                 onClick={handleSave}
                 loading={saving}
               >
-                保存
+                Save
               </Button>
             </Tooltip>
           </Space>
         </div>
       </Card>
 
-      {/* 编辑器区域 */}
+      {/* Editor area */}
       <div style={{ flex: 1, overflow: 'hidden' }} data-color-mode={isDark ? "dark" : "light"} data-dark-mode={isDark ? "dark" : "light"}>
         <MDEditor
           value={content}
@@ -141,16 +141,16 @@ const DocumentEdit: React.FC = () => {
         />
       </div>
 
-      {/* 状态栏 */}
+      {/* Status bar */}
       <Card
         size="small"
         style={{ marginTop: 8, backgroundColor: isDark ? '#2d2d2d' : '#fff', borderColor: isDark ? '#404040' : '#f0f0f0' }}
         bodyStyle={{ padding: '4px 16px' }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', color: '#666', fontSize: 12 }}>
-          <span>行数: {content.split('\n').length}</span>
-          <span>字数: {content.length}</span>
-          <span>状态: {saving ? '保存中...' : '已保存'}</span>
+          <span>Lines: {content.split('\n').length}</span>
+          <span>Chars: {content.length}</span>
+          <span>Status: {saving ? 'Saving...' : 'Saved'}</span>
         </div>
       </Card>
     </div>

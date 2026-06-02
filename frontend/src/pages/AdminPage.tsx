@@ -35,12 +35,12 @@ export default function AdminPage() {
   }
 
   const userColumns = [
-    { title: '用户名', dataIndex: 'username', key: 'username' },
-    { title: '邮箱', dataIndex: 'email', key: 'email' },
-    { title: '状态', dataIndex: 'is_active', key: 'is_active', render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? '活跃' : '禁用'}</Tag> },
-    { title: '角色', dataIndex: 'roles', key: 'roles', render: (rs: string[]) => rs.map(r => <Tag key={r}>{r}</Tag>) },
+    { title: 'Username', dataIndex: 'username', key: 'username' },
+    { title: 'Email', dataIndex: 'email', key: 'email' },
+    { title: 'Status', dataIndex: 'is_active', key: 'is_active', render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? 'Active' : 'Disabled'}</Tag> },
+    { title: 'Roles', dataIndex: 'roles', key: 'roles', render: (rs: string[]) => rs.map(r => <Tag key={r}>{r}</Tag>) },
     {
-      title: '操作', key: 'action',
+      title: 'Actions', key: 'action',
       render: (_: unknown, record: User) => (
         <Space>
           <Button size="small" icon={<EditOutlined />} onClick={() => openUserModal(record)} />
@@ -50,18 +50,18 @@ export default function AdminPage() {
   ]
 
   const roleColumns = [
-    { title: '名称', dataIndex: 'name', key: 'name' },
-    { title: '描述', dataIndex: 'description', key: 'description' },
-    { title: '类型', dataIndex: 'is_system', key: 'is_system', render: (v: boolean) => <Tag color={v ? 'blue' : 'default'}>{v ? '系统' : '自定义'}</Tag> },
-    { title: '权限数', key: 'perm_count', render: (_: unknown, r: Role) => r.permissions?.length ?? 0 },
+    { title: 'Name', dataIndex: 'name', key: 'name' },
+    { title: 'Description', dataIndex: 'description', key: 'description' },
+    { title: 'Type', dataIndex: 'is_system', key: 'is_system', render: (v: boolean) => <Tag color={v ? 'blue' : 'default'}>{v ? 'System' : 'Custom'}</Tag> },
+    { title: 'Permissions', key: 'perm_count', render: (_: unknown, r: Role) => r.permissions?.length ?? 0 },
     {
-      title: '操作', key: 'action',
+      title: 'Actions', key: 'action',
       render: (_: unknown, record: Role) => (
         <Space>
           {!record.is_system && (
             <>
               <Button size="small" icon={<EditOutlined />} onClick={() => openRoleModal(record)} />
-              <Popconfirm title="确定删除此角色?" onConfirm={() => deleteRole(record.id)} okText="确定" cancelText="取消">
+              <Popconfirm title="Are you sure you want to delete this role?" onConfirm={() => deleteRole(record.id)} okText="OK" cancelText="Cancel">
                 <Button size="small" danger icon={<DeleteOutlined />} />
               </Popconfirm>
             </>
@@ -93,12 +93,12 @@ export default function AdminPage() {
       const values = await form.validateFields()
       if (selectedUser) {
         await adminApi.assignUserRoles(selectedUser.id, values.roles)
-        message.success('用户角色已更新')
+        message.success('User roles updated')
       }
       setUserModalOpen(false)
       loadData()
     } catch (e) {
-      if (e !== 'cancel') message.error('操作失败')
+      if (e !== 'cancel') message.error('Operation failed')
     }
   }
 
@@ -107,41 +107,41 @@ export default function AdminPage() {
       const values = await roleForm.validateFields()
       if (selectedRole) {
         await adminApi.updateRole(selectedRole.id, values.name, values.description)
-        message.success('角色已更新')
+        message.success('Role updated')
       } else {
         await adminApi.createRole(values.name, values.description)
-        message.success('角色已创建')
+        message.success('Role created')
       }
       setRoleModalOpen(false)
       loadData()
     } catch (e) {
-      if (e !== 'cancel') message.error('操作失败')
+      if (e !== 'cancel') message.error('Operation failed')
     }
   }
 
   const deleteRole = async (roleId: string) => {
     try {
       await adminApi.deleteRole(roleId)
-      message.success('角色已删除')
+      message.success('Role deleted')
       loadData()
     } catch {
-      message.error('删除失败')
+      message.error('Failed to delete')
     }
   }
 
   return (
     <div>
-      <Title level={4}>管理后台</Title>
+      <Title level={4}>Admin Panel</Title>
       <Card>
         <Tabs items={[
           {
             key: 'users',
-            label: '用户管理',
+            label: 'User Management',
             children: (
               <>
                 <div style={{ marginBottom: 16 }}>
                   <Button type="primary" icon={<PlusOutlined />} onClick={() => openUserModal()}>
-                    分配角色
+                    Assign Roles
                   </Button>
                 </div>
                 <Table columns={userColumns} dataSource={users} rowKey="id" loading={loading} />
@@ -150,12 +150,12 @@ export default function AdminPage() {
           },
           {
             key: 'roles',
-            label: '角色管理',
+            label: 'Role Management',
             children: (
               <>
                 <div style={{ marginBottom: 16 }}>
                   <Button type="primary" icon={<PlusOutlined />} onClick={() => openRoleModal()}>
-                    新建角色
+                    New Role
                   </Button>
                 </div>
                 <Table columns={roleColumns} dataSource={roles} rowKey="id" loading={loading} />
@@ -166,14 +166,14 @@ export default function AdminPage() {
       </Card>
 
       <Modal
-        title={selectedUser ? '编辑用户角色' : '分配角色'}
+        title={selectedUser ? 'Edit User Roles' : 'Assign Roles'}
         open={userModalOpen}
         onOk={handleUserSubmit}
         onCancel={() => setUserModalOpen(false)}
       >
         <Form form={form} layout="vertical">
-          <Form.Item label="角色" name="roles" rules={[{ required: true, message: '请选择角色' }]}>
-            <Select mode="multiple" placeholder="选择角色">
+          <Form.Item label="Roles" name="roles" rules={[{ required: true, message: 'Please select roles' }]}>
+            <Select mode="multiple" placeholder="Select roles">
               {allRoles.filter(r => !r.is_system || r.name === 'admin').map(r => (
                 <Select.Option key={r.name} value={r.name}>{r.name}</Select.Option>
               ))}
@@ -183,17 +183,17 @@ export default function AdminPage() {
       </Modal>
 
       <Modal
-        title={selectedRole ? '编辑角色' : '新建角色'}
+        title={selectedRole ? 'Edit Role' : 'New Role'}
         open={roleModalOpen}
         onOk={handleRoleSubmit}
         onCancel={() => setRoleModalOpen(false)}
       >
         <Form form={roleForm} layout="vertical">
-          <Form.Item label="角色名称" name="name" rules={[{ required: true, message: '请输入角色名称' }]}>
-            <Input placeholder="例如: moderator" />
+          <Form.Item label="Role Name" name="name" rules={[{ required: true, message: 'Please enter role name' }]}>
+            <Input placeholder="e.g. moderator" />
           </Form.Item>
-          <Form.Item label="描述" name="description">
-            <Input.TextArea placeholder="角色描述" />
+          <Form.Item label="Description" name="description">
+            <Input.TextArea placeholder="Role description" />
           </Form.Item>
         </Form>
       </Modal>

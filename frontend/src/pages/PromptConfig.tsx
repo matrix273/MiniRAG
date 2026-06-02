@@ -8,8 +8,8 @@ const { Title, Text } = Typography
 const { TextArea } = Input
 
 const CATEGORIES = [
-  { key: 'agent_system', label: 'Agent System', description: 'Agent 行为和工具使用策略' },
-  { key: 'rag_template', label: 'RAG Template', description: 'RAG 问答答案格式要求' },
+  { key: 'agent_system', label: 'Agent System', description: 'Agent behavior and tool usage policy' },
+  { key: 'rag_template', label: 'RAG Template', description: 'RAG Q&A answer format requirements' },
 ]
 
 // LLM 配置项
@@ -44,7 +44,7 @@ const PromptConfigPage = () => {
       const data = await promptApi.listVersions(category)
       setVersions(data)
     } catch {
-      message.error('加载版本历史失败')
+      message.error('Failed to load version history')
     } finally {
       setLoading(false)
     }
@@ -56,7 +56,7 @@ const PromptConfigPage = () => {
       const data = await systemConfigApi.list()
       setConfigs(data)
     } catch {
-      message.error('加载配置失败')
+      message.error('Failed to load configurations')
     } finally {
       setConfigLoading(false)
     }
@@ -82,84 +82,84 @@ const PromptConfigPage = () => {
     try {
       const values = await form.validateFields()
       await promptApi.create(activeCategory, values.name, values.content, values.description)
-      message.success('新版本已创建并激活')
+      message.success('New version created and activated')
       setEditModalVisible(false)
       fetchVersions(activeCategory)
     } catch {
-      message.error('保存失败')
+      message.error('Failed to save')
     }
   }
 
   const handleActivate = async (promptId: string) => {
     try {
       await promptApi.activate(activeCategory, promptId)
-      message.success('已切换版本')
+      message.success('Version switched')
       fetchVersions(activeCategory)
     } catch {
-      message.error('切换失败')
+      message.error('Failed to switch')
     }
   }
 
   const handleDelete = async (promptId: string) => {
     try {
       await promptApi.delete(activeCategory, promptId)
-      message.success('已删除')
+      message.success('Deleted')
       fetchVersions(activeCategory)
     } catch {
-      message.error('删除失败')
+      message.error('Failed to delete')
     }
   }
 
   const handleConfigUpdate = async (key: string, value: string) => {
     try {
       await systemConfigApi.update(key, value)
-      message.success('配置已更新')
+      message.success('Configuration updated')
       fetchConfigs()
     } catch {
-      message.error('更新失败')
+      message.error('Failed to update')
     }
   }
 
   const versionColumns = [
     {
-      title: '版本',
+      title: 'Version',
       dataIndex: 'version',
       width: 80,
       render: (v: number) => `v${v}`,
     },
     {
-      title: '名称',
+      title: 'Name',
       dataIndex: 'name',
     },
     {
-      title: '说明',
+      title: 'Description',
       dataIndex: 'description',
       ellipsis: true,
     },
     {
-      title: '状态',
+      title: 'Status',
       dataIndex: 'is_active',
       width: 100,
       render: (active: boolean) =>
-        active ? <Tag color="green" icon={<CheckCircleOutlined />}>当前</Tag> : <Tag>历史</Tag>,
+        active ? <Tag color="green" icon={<CheckCircleOutlined />}>Active</Tag> : <Tag>History</Tag>,
     },
     {
-      title: '创建时间',
+      title: 'Created',
       dataIndex: 'created_at',
       width: 180,
       render: (t: string) => new Date(t).toLocaleString(),
     },
     {
-      title: '操作',
+      title: 'Actions',
       width: 160,
       render: (_: unknown, record: PromptConfig) => (
         <Space>
           {!record.is_active && (
-            <Button size="small" onClick={() => handleActivate(record.id)}>切换</Button>
+            <Button size="small" onClick={() => handleActivate(record.id)}>Switch</Button>
           )}
           <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
           {!record.is_active && (
-            <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)}>
+            <Popconfirm title="Confirm deletion?" onConfirm={() => handleDelete(record.id)}>
               <Button size="small" danger icon={<DeleteOutlined />} />
             </Popconfirm>
           )}
@@ -169,10 +169,10 @@ const PromptConfigPage = () => {
   ]
 
   const configColumns = [
-    { title: '参数', dataIndex: 'key', width: 220 },
-    { title: '说明', dataIndex: 'description', width: 280 },
+    { title: 'Parameter', dataIndex: 'key', width: 220 },
+    { title: 'Description', dataIndex: 'description', width: 280 },
     {
-      title: '当前值',
+      title: 'Current Value',
       dataIndex: 'value',
       render: (val: string, record: SystemConfig) => (
         <Space>
@@ -195,7 +195,7 @@ const PromptConfigPage = () => {
       ),
     },
     {
-      title: '更新时间',
+      title: 'Updated',
       dataIndex: 'updated_at',
       width: 180,
       render: (t: string) => new Date(t).toLocaleString(),
@@ -204,10 +204,10 @@ const PromptConfigPage = () => {
 
   // LLM 配置专用列
   const llmConfigColumns = [
-    { title: '参数', dataIndex: 'key', width: 200 },
-    { title: '说明', dataIndex: 'description', width: 280 },
+    { title: 'Parameter', dataIndex: 'key', width: 200 },
+    { title: 'Description', dataIndex: 'description', width: 280 },
     {
-      title: '当前值',
+      title: 'Current Value',
       dataIndex: 'value',
       render: (val: string, record: SystemConfig) => {
         // 布尔类型使用 Switch
@@ -216,8 +216,8 @@ const PromptConfigPage = () => {
             <Switch
               checked={val === 'true'}
               onChange={(checked) => handleConfigUpdate(record.key, checked ? 'true' : 'false')}
-              checkedChildren="启用"
-              unCheckedChildren="禁用"
+              checkedChildren="Enabled"
+              unCheckedChildren="Disabled"
             />
           )
         }
@@ -226,7 +226,7 @@ const PromptConfigPage = () => {
           return (
             <Input.Password
               value={val}
-              placeholder={val ? '****' : '请输入 API Key'}
+              placeholder={val ? '****' : 'Enter API Key'}
               onPressEnter={(e) => handleConfigUpdate(record.key, (e.target as HTMLInputElement).value)}
               style={{ width: 300 }}
             />
@@ -243,7 +243,7 @@ const PromptConfigPage = () => {
       },
     },
     {
-      title: '更新时间',
+      title: 'Updated',
       dataIndex: 'updated_at',
       width: 180,
       render: (t: string) => new Date(t).toLocaleString(),
@@ -252,7 +252,7 @@ const PromptConfigPage = () => {
 
   return (
     <div style={{ maxWidth: 1200 }}>
-      <Title level={3}>系统配置</Title>
+      <Title level={3}>System Configuration</Title>
 
       <Tabs
         activeKey={activeCategory}
@@ -265,7 +265,7 @@ const PromptConfigPage = () => {
               <>
                 <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text type="secondary">{cat.description}</Text>
-                  <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>新建版本</Button>
+                  <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>New Version</Button>
                 </div>
                 <Table
                   dataSource={versions}
@@ -275,7 +275,7 @@ const PromptConfigPage = () => {
                   pagination={false}
                 />
                 {versions.find(v => v.is_active) && (
-                  <Card title="当前生效内容" size="small" style={{ marginTop: 16 }}>
+                  <Card title="Currently Active Content" size="small" style={{ marginTop: 16 }}>
                     <pre style={{ whiteSpace: 'pre-wrap', margin: 0, fontSize: 13 }}>
                       {versions.find(v => v.is_active)?.content}
                     </pre>
@@ -286,7 +286,7 @@ const PromptConfigPage = () => {
           })),
           {
             key: 'agent_params',
-            label: 'Agent 参数',
+            label: 'Agent Parameters',
             children: (
               <Table
                 dataSource={configs.filter(c => !LLM_CONFIG_KEYS.includes(c.key))}
@@ -299,11 +299,11 @@ const PromptConfigPage = () => {
           },
           {
             key: 'llm_config',
-            label: 'LLM 配置',
+            label: 'LLM Configuration',
             children: (
               <>
                 <div style={{ marginBottom: 16 }}>
-                  <Text type="secondary">大模型配置 - 使用 LiteLLM 支持多种模型提供商 (DashScope, OpenAI 等)</Text>
+                  <Text type="secondary">LLM Configuration - Uses LiteLLM to support multiple model providers (DashScope, OpenAI, etc.)</Text>
                 </div>
                 <Table
                   dataSource={configs.filter(c => LLM_CONFIG_KEYS.includes(c.key))}
@@ -319,22 +319,22 @@ const PromptConfigPage = () => {
       />
 
       <Modal
-        title={editingPrompt ? `编辑 v${editingPrompt.version}` : '新建版本'}
+        title={editingPrompt ? `Edit v${editingPrompt.version}` : 'New Version'}
         open={editModalVisible}
         onOk={handleSave}
         onCancel={() => setEditModalVisible(false)}
         width={800}
-        okText="保存"
+        okText="Save"
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
+          <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Please enter a name' }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="content" label="内容" rules={[{ required: true, message: '请输入内容' }]}>
+          <Form.Item name="content" label="Content" rules={[{ required: true, message: 'Please enter content' }]}>
             <TextArea rows={16} style={{ fontFamily: 'monospace' }} />
           </Form.Item>
-          <Form.Item name="description" label="变更说明">
-            <Input placeholder="可选：描述本次变更" />
+          <Form.Item name="description" label="Change Description">
+            <Input placeholder="Optional: describe this change" />
           </Form.Item>
         </Form>
       </Modal>

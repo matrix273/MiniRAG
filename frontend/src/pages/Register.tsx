@@ -16,11 +16,11 @@ export default function Register() {
     setLoading(true)
     try {
       await register(values.email, values.username, values.password)
-      messageApi.success('注册成功，请登录')
+      messageApi.success('Registration successful, please log in')
       navigate('/login')
     } catch (err: unknown) {
       const error = err as { response?: { data?: { detail?: string } } }
-      messageApi.error(error.response?.data?.detail || '注册失败')
+      messageApi.error(error.response?.data?.detail || 'Registration failed')
     } finally {
       setLoading(false)
     }
@@ -33,31 +33,31 @@ export default function Register() {
         <Card style={{ width: 400 }}>
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
             <div style={{ display: 'flex', alignItems: 'center' }}>
-              <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/')}>返回首页</Button>
+              <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/')}>Back to Home</Button>
             </div>
             <div style={{ textAlign: 'center' }}>
               <Title level={3} style={{ margin: 0 }}>RAG</Title>
-              <Text type="secondary">创建新账号</Text>
+              <Text type="secondary">Create New Account</Text>
             </div>
             <Form onFinish={onFinish} layout="vertical" size="large">
-              <Form.Item name="email" rules={[{ required: true, type: 'email', message: '请输入有效的邮箱' }]}>
-                <Input prefix={<MailOutlined />} placeholder="邮箱" />
+              <Form.Item name="email" rules={[{ required: true, type: 'email', message: 'Please enter a valid email' }]}>
+                <Input prefix={<MailOutlined />} placeholder="Email" />
               </Form.Item>
-              <Form.Item name="username" rules={[{ required: true, min: 2, message: '用户名至少2个字符' }]}>
-                <Input prefix={<UserOutlined />} placeholder="用户名" />
+              <Form.Item name="username" rules={[{ required: true, min: 2, message: 'Username must be at least 2 characters' }]}>
+                <Input prefix={<UserOutlined />} placeholder="Username" />
               </Form.Item>
-              <Form.Item name="password" rules={[{ required: true, min: 6, message: '密码至少6个字符' }]}>
-                <Input.Password prefix={<LockOutlined />} placeholder="密码" />
+              <Form.Item name="password" rules={[{ required: true, min: 6, message: 'Password must be at least 6 characters' }]}>
+                <Input.Password prefix={<LockOutlined />} placeholder="Password" />
               </Form.Item>
               <Form.Item>
                 <Button type="primary" htmlType="submit" loading={loading} block>
-                  注册
+                  Register
                 </Button>
               </Form.Item>
             </Form>
             <div style={{ textAlign: 'center' }}>
-              <Text type="secondary">已有账号？</Text>{' '}
-              <Link to="/login">立即登录</Link>
+              <Text type="secondary">Already have an account?</Text>{' '}
+              <Link to="/login">Log In</Link>
             </div>
           </Space>
         </Card>

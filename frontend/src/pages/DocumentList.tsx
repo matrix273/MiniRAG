@@ -75,7 +75,7 @@ const DocumentList = () => {
       const data = await folderApi.list()
       setFolders(data)
     } catch {
-      message.error('获取知识库失败')
+      message.error('Failed to fetch knowledge bases')
     }
   }
 
@@ -188,17 +188,17 @@ const DocumentList = () => {
     let inputName = ''
     let inputDescription = ''
     Modal.confirm({
-      title: '新建知识库',
+      title: 'New Knowledge Base',
       content: (
         <div>
           <Input
-            placeholder="知识库名称"
+            placeholder="Knowledge base name"
             onChange={e => { inputName = e.target.value }}
             autoFocus
             style={{ marginBottom: 12 }}
           />
           <Input.TextArea
-            placeholder="描述（可选）"
+            placeholder="Description (optional)"
             onChange={e => { inputDescription = e.target.value }}
             rows={3}
           />
@@ -206,15 +206,15 @@ const DocumentList = () => {
       ),
       onOk: async () => {
         if (!inputName.trim()) {
-          message.error('知识库名称不能为空')
+          message.error('Knowledge base name cannot be empty')
           return
         }
         try {
           await folderApi.create(inputName.trim(), parentId, inputDescription.trim() || undefined)
-          message.success('知识库创建成功')
+          message.success('Knowledge base created successfully')
           fetchFolders()
         } catch {
-          message.error('创建知识库失败')
+          message.error('Failed to create knowledge base')
         }
       },
     })
@@ -224,19 +224,19 @@ const DocumentList = () => {
     let inputName = currentName
     let inputDescription = currentDescription || ''
     Modal.confirm({
-      title: '重命名知识库',
+      title: 'Rename Knowledge Base',
       content: (
         <div>
           <Input
             defaultValue={currentName}
-            placeholder="知识库名称"
+            placeholder="Knowledge base name"
             onChange={e => { inputName = e.target.value }}
             autoFocus
             style={{ marginBottom: 12 }}
           />
           <Input.TextArea
             defaultValue={currentDescription}
-            placeholder="描述（可选）"
+            placeholder="Description (optional)"
             onChange={e => { inputDescription = e.target.value }}
             rows={3}
           />
@@ -244,15 +244,15 @@ const DocumentList = () => {
       ),
       onOk: async () => {
         if (!inputName.trim()) {
-          message.error('知识库名称不能为空')
+          message.error('Knowledge base name cannot be empty')
           return
         }
         try {
           await folderApi.rename(folderId, inputName.trim(), inputDescription.trim() || undefined)
-          message.success('知识库重命名成功')
+          message.success('Knowledge base renamed successfully')
           fetchFolders()
         } catch {
-          message.error('重命名知识库失败')
+          message.error('Failed to rename knowledge base')
         }
       },
     })
@@ -260,16 +260,16 @@ const DocumentList = () => {
 
   const handleDeleteFolder = (folderId: string, folderName: string) => {
     modal.confirm({
-      title: '删除知识库？',
+      title: 'Delete Knowledge Base?',
       icon: <ExclamationCircleOutlined />,
-      content: `确定要删除知识库 "${folderName}" 及其所有内容吗？`,
-      okText: '删除',
+      content: `Are you sure you want to delete "${folderName}" and all its contents?`,
+      okText: 'Delete',
       okType: 'danger',
-      cancelText: '取消',
+      cancelText: 'Cancel',
       onOk: async () => {
         try {
           await folderApi.delete(folderId)
-          message.success('知识库删除成功')
+          message.success('Knowledge base deleted successfully')
           if (selectedFolderId === folderId) {
             setSelectedFolderId(null)
             setSelectedKeys([])
@@ -277,7 +277,7 @@ const DocumentList = () => {
           fetchFolders()
           fetchDocuments()
         } catch {
-          message.error('删除知识库失败')
+          message.error('Failed to delete knowledge base')
         }
       },
     })
@@ -396,10 +396,10 @@ const DocumentList = () => {
       const isTargetRoot = dropTargetKey === 'root'
       const targetFolderId = isTargetRoot || !isTargetFolder ? null : dropTargetKey
       folderApi.move(dragKey, targetFolderId).then(() => {
-        message.success('知识库移动成功')
+        message.success('Knowledge base moved successfully')
         fetchFolders()
       }).catch(() => {
-        message.error('移动知识库失败')
+        message.error('Failed to move knowledge base')
       })
     }
   }
@@ -611,7 +611,7 @@ const DocumentList = () => {
     return [
       {
         key: 'root',
-        title: '所有文档',
+        title: 'All Documents',
         icon: <FolderOpenOutlined />,
         children: treeData,
       },
@@ -630,8 +630,8 @@ const DocumentList = () => {
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, padding: '0 8px' }}>
-          <Title level={5} style={{ margin: 0, fontSize: 14 }}>知识库</Title>
-          <Tooltip title="创建新知识库">
+          <Title level={5} style={{ margin: 0, fontSize: 14 }}>Knowledge Base</Title>
+          <Tooltip title="Create knowledge base">
             <Button
               type="primary"
               icon={<FolderAddOutlined />}
@@ -639,7 +639,7 @@ const DocumentList = () => {
               size="middle"
               style={{ minWidth: 80 }}
             >
-              新建
+              New
             </Button>
           </Tooltip>
         </div>
@@ -662,7 +662,7 @@ const DocumentList = () => {
         <Card>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <Title level={4} style={{ margin: 0 }}>
-              {selectedFolderId ? `${folders.find(f => f.id === selectedFolderId)?.name || '知识库'} 中的文档` : '所有文档'}
+              {selectedFolderId ? `Documents in ${folders.find(f => f.id === selectedFolderId)?.name || 'Knowledge Base'}` : 'All Documents'}
             </Title>
             <Space>
               {selectedDocIds.length > 0 && (
@@ -676,7 +676,7 @@ const DocumentList = () => {
                   <Dropdown
                     menu={{
                       items: [
-                        { key: 'root', label: '根目录', onClick: () => handleMoveSelected('') },
+                        { key: 'root', label: 'Root', onClick: () => handleMoveSelected('') },
                         ...folderSelectItems.map(item => ({
                           key: item.value,
                           label: item.label,
@@ -705,7 +705,7 @@ const DocumentList = () => {
                     icon={<DeleteOutlined />}
                     onClick={() => handleDeleteFolder(selectedFolderId, folders.find(f => f.id === selectedFolderId)?.name || '')}
                   >
-                    删除知识库
+                    Delete
                   </Button>
                 </>
               )}
@@ -713,7 +713,7 @@ const DocumentList = () => {
                 Upload
               </Button>
               <Button type="primary" onClick={() => setShowCreateModal(true)}>
-                创建 Markdown
+                Create Markdown
               </Button>
             </Space>
           </div>
@@ -729,15 +729,15 @@ const DocumentList = () => {
             okButtonProps={{ loading: uploading }}
           >
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', marginBottom: 8 }}>选择知识库：</label>
+              <label style={{ display: 'block', marginBottom: 8 }}>Select knowledge base:</label>
               <Select
                 style={{ width: '100%' }}
                 value={uploadFolderId}
                 onChange={setUploadFolderId}
                 allowClear
-                placeholder="根目录"
+                placeholder="Root"
                 options={[
-                  { value: '', label: '根目录' },
+                  { value: '', label: 'Root' },
                   ...folderSelectItems.map(item => ({
                     value: item.value,
                     label: item.label,
