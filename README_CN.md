@@ -296,7 +296,7 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ## 问题反馈
 
-如有问题或建议，请创建 [Issue](https://github.com/your-username/kb/issues)。
+如有问题或建议，请创建 [Issue](https://github.com/matrix273/MiniRAG/issues)。
 
 ## License
 
