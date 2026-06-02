@@ -169,11 +169,11 @@ uv sync
 # 配置环境变量
 cp .env.example .env
 # 编辑 .env 文件，配置以下必填项：
-#   DATABASE_URL=postgresql+asyncpg://用户名:密码@localhost:5432/pageindex
+#   DATABASE_URL=postgresql+asyncpg://用户名:密码@localhost:5432/kb
 #   JWT_SECRET_KEY=你的JWT密钥
 
 # 创建 PostgreSQL 数据库
-psql -U postgres -c "CREATE DATABASE pageindex;"
+psql -U postgres -c "CREATE DATABASE kb;"
 
 # 启动后端服务（首次启动会自动创建表和初始化数据）
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
