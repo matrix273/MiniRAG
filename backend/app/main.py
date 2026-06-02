@@ -104,44 +104,80 @@ app.include_router(documents_router)
 
 @app.on_event("startup")
 async def startup():
-    """Initialize database on startup."""
-    await init_db()
-    # Ensure upload directory exists
-    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-    from app.services.system_config_service import init_default_configs
-    await init_default_configs()
-    # Initialize default prompts in DB
-    from app.services.prompt_service import init_default_prompts
-    await init_default_prompts()
-    # Seed roles and permissions
-    from app.services.auth_service import seed_roles_and_permissions
-    async with async_session() as seed_db:
-        await seed_roles_and_permissions(seed_db)
+    """Initialize database on startup with comprehensive error handling."""
+    import sys
+    from loguru import logger
     
-    # 从数据库加载 LLM 配置并设置环境变量
-    from app.services.system_config_service import get_llm_config
-    llm_config = await get_llm_config()
-    api_key = llm_config["dashscope_key"] or llm_config["openai_key"]
-    if api_key:
-        os.environ["OPENAI_API_KEY"] = api_key
-    if llm_config["api_base_url"]:
-        os.environ["OPENAI_BASE_URL"] = llm_config["api_base_url"]
-    logging.info(f"Loaded LLM config: model={llm_config['default_model']}, vision_enabled={llm_config['vision_enabled']}")
-    
-    # 处理中断的任务：将 processing 状态的文档重置为 error
-    from sqlalchemy import select, update
-    async with async_session() as db:
-        result = await db.execute(
-            update(Document)
-            .where(Document.status == "processing")
-            .values(
-                status="error",
-                error_message="服务重启导致任务中断，请点击重新索引重试"
+    try:
+        # Initialize database
+        await init_db()
+        
+        # Ensure upload directory exists
+        os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+        
+        # Initialize system configs
+        from app.services.system_config_service import init_default_configs
+        await init_default_configs()
+        
+        # Initialize default prompts
+        from app.services.prompt_service import init_default_prompts
+        await init_default_prompts()
+        
+        # Seed roles and permissions
+        from app.services.auth_service import seed_roles_and_permissions
+        async with async_session() as seed_db:
+            await seed_roles_and_permissions(seed_db)
+        
+        # 从数据库加载 LLM 配置并设置环境变量
+        from app.services.system_config_service import get_llm_config
+        llm_config = await get_llm_config()
+        api_key = llm_config["dashscope_key"] or llm_config["openai_key"]
+        if api_key:
+            os.environ["OPENAI_API_KEY"] = api_key
+        if llm_config["api_base_url"]:
+            os.environ["OPENAI_BASE_URL"] = llm_config["api_base_url"]
+        logger.info(f"Loaded LLM config: model={llm_config['default_model']}, vision_enabled={llm_config['vision_enabled']}")
+        
+        # 处理中断的任务：将 processing 状态的文档重置为 error
+        from sqlalchemy import select, update
+        async with async_session() as db:
+            result = await db.execute(
+                update(Document)
+                .where(Document.status == "processing")
+                .values(
+                    status="error",
+                    error_message="服务重启导致任务中断，请点击重新索引重试"
+                )
             )
-        )
-        if result.rowcount > 0:
-            logging.warning(f"Reset {result.rowcount} documents from 'processing' to 'error' due to server restart")
-            await db.commit()
+            if result.rowcount > 0:
+                logger.warning(f"Reset {result.rowcount} documents from 'processing' to 'error' due to server restart")
+                await db.commit()
+        
+        logger.info("Application startup completed successfully")
+        
+    except Exception as e:
+        error_msg = str(e).lower()
+        
+        # 判断是否为数据库连接错误
+        is_db_error = any(keyword in error_msg for keyword in [
+            'database', 'postgresql', 'connect', 'connection', 'refused',
+            'timeout', 'closed', 'errno 61', 'asyncpg'
+        ])
+        
+        if is_db_error:
+            # 数据库连接错误 - 已在 init_db 中提供详细信息
+            logger.error("Application startup failed due to database connection issue")
+            logger.error("Please check the database connection error message above")
+        else:
+            # 其他启动错误
+            logger.error(f"Application startup failed: {e}")
+            logger.error("Full error details:")
+            import traceback
+            traceback.print_exc()
+        
+        # 优雅退出
+        logger.error("Application is shutting down due to startup failure")
+        sys.exit(1)
 
 
 # ========== Document Endpoints ==========

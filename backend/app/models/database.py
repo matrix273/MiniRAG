@@ -134,9 +134,87 @@ class SystemConfig(Base):
 
 
 async def init_db():
-    """Initialize database tables."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """Initialize database tables with error handling and retry logic."""
+    import asyncio
+    import socket
+    from loguru import logger
+    
+    max_retries = 3
+    retry_delay = 2  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            logger.info("Database initialized successfully")
+            return
+        except Exception as e:
+            error_msg = str(e).lower()
+            
+            # 判断是否为连接相关错误
+            is_connection_error = any(keyword in error_msg for keyword in [
+                'connect', 'connection', 'refused', 'timeout', 'closed',
+                'could not connect', 'connection refused', 'no such host',
+                'name or service not known', 'errno 61'
+            ])
+            
+            if is_connection_error:
+                # 解析数据库连接信息
+                from urllib.parse import urlparse
+                from app.core.config import get_settings
+                settings = get_settings()
+                parsed = urlparse(settings.DATABASE_URL.replace('+asyncpg', ''))
+                db_host = parsed.hostname or 'localhost'
+                db_port = parsed.port or 5432
+                db_name = parsed.path.lstrip('/') if parsed.path else 'unknown'
+                db_user = parsed.username or 'unknown'
+                
+                if attempt < max_retries - 1:
+                    logger.warning(f"Database connection failed (attempt {attempt + 1}/{max_retries}): {e}")
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    # 最后一次尝试失败，提供详细的错误信息
+                    error_details = f"""
+╔══════════════════════════════════════════════════════════════╗
+║                    数据库连接失败                             ║
+╠══════════════════════════════════════════════════════════════╣
+║ 错误信息: {str(e)[:50]:<50} ║
+║                                                              ║
+║ 连接信息:                                                     ║
+║   主机: {db_host:<50} ║
+║   端口: {db_port:<50} ║
+║   数据库: {db_name:<49} ║
+║   用户: {db_user:<50} ║
+║                                                              ║
+║ 可能的原因:                                                   ║
+║   1. PostgreSQL 服务未启动                                    ║
+║   2. 数据库端口被阻止 (防火墙/网络问题)                        ║
+║   3. 数据库用户/密码配置错误                                   ║
+║   4. 数据库不存在                                            ║
+║                                                              ║
+║ 解决方案:                                                     ║
+║   1. 检查 PostgreSQL 服务状态:                                ║
+║      brew services list | grep postgresql                     ║
+║      brew services start postgresql                           ║
+║                                                              ║
+║   2. 验证数据库连接:                                          ║
+║      psql -h {db_host:<30} -p {db_port} -U {db_user:<20} ║
+║                                                              ║
+║   3. 检查 .env 文件中的 DATABASE_URL 配置:                    ║
+║      DATABASE_URL=postgresql+asyncpg://user:pass@host:port/db ║
+║                                                              ║
+║   4. 确保数据库已创建:                                        ║
+║      createdb -h {db_host} -U {db_user} {db_name:<20} ║
+╚══════════════════════════════════════════════════════════════╝
+"""
+                    logger.error(error_details)
+                    raise
+            else:
+                # 非连接错误，直接抛出
+                logger.error(f"Database initialization failed: {e}")
+                raise
 
 
 async def get_db() -> AsyncSession:
