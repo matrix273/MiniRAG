@@ -46,9 +46,9 @@ function AppContent() {
   }
 
   const userMenuItems = [
-    ...(user?.roles?.includes('admin') ? [{ key: '/admin', icon: <CrownOutlined />, label: '管理后台' }] : []),
-    { key: 'change-password', icon: <UserOutlined />, label: '修改密码' },
-    { key: 'logout', icon: <LogoutOutlined />, label: '登出' },
+    ...(user?.roles?.includes('admin') ? [{ key: '/admin', icon: <CrownOutlined />, label: 'Admin Panel' }] : []),
+    { key: 'change-password', icon: <UserOutlined />, label: 'Change Password' },
+    { key: 'logout', icon: <LogoutOutlined />, label: 'Logout' },
   ]
 
   const handleUserMenu = async ({ key }: { key: string }) => {
@@ -66,15 +66,15 @@ function AppContent() {
     try {
       const values = await passwordForm.validateFields()
       await authApi.changePassword(values.old_password, values.new_password)
-      antMessage.success('密码修改成功')
+      antMessage.success('Password changed successfully')
       setPasswordModalOpen(false)
       passwordForm.resetFields()
     } catch (e: unknown) {
       if (e && typeof e === 'object' && 'response' in e) {
         const err = e as { response?: { data?: { detail?: string } } }
-        antMessage.error(err.response?.data?.detail || '修改失败')
+        antMessage.error(err.response?.data?.detail || 'Change failed')
       } else {
-        antMessage.error('修改失败')
+        antMessage.error('Change failed')
       }
     }
   }
@@ -128,29 +128,29 @@ function AppContent() {
       </Content>
 
       <Modal
-        title="修改密码"
+        title="Change Password"
         open={passwordModalOpen}
         onOk={handlePasswordSubmit}
         onCancel={() => { setPasswordModalOpen(false); passwordForm.resetFields() }}
-        okText="确认"
-        cancelText="取消"
+        okText="Confirm"
+        cancelText="Cancel"
       >
         <Form form={passwordForm} layout="vertical">
-          <Form.Item name="old_password" label="当前密码" rules={[{ required: true, message: '请输入当前密码' }]}>
-            <Input.Password placeholder="当前密码" />
+          <Form.Item name="old_password" label="Current Password" rules={[{ required: true, message: 'Please enter current password' }]}>
+            <Input.Password placeholder="Current password" />
           </Form.Item>
-          <Form.Item name="new_password" label="新密码" rules={[{ required: true, message: '请输入新密码' }, { min: 6, message: '密码至少6位' }]}>
-            <Input.Password placeholder="新密码" />
+          <Form.Item name="new_password" label="New Password" rules={[{ required: true, message: 'Please enter new password' }, { min: 6, message: 'Password must be at least 6 characters' }]}>
+            <Input.Password placeholder="New password" />
           </Form.Item>
-          <Form.Item name="confirm_password" label="确认新密码" dependencies={['new_password']} rules={[{ required: true, message: '请确认新密码' }, ({ getFieldValue }) => ({
+          <Form.Item name="confirm_password" label="Confirm New Password" dependencies={['new_password']} rules={[{ required: true, message: 'Please confirm new password' }, ({ getFieldValue }) => ({
             validator(_, value) {
               if (!value || getFieldValue('new_password') === value) {
                 return Promise.resolve()
               }
-              return Promise.reject(new Error('两次输入的密码不一致'))
+              return Promise.reject(new Error('Passwords do not match'))
             },
           })]}>
-            <Input.Password placeholder="确认新密码" />
+            <Input.Password placeholder="Confirm new password" />
           </Form.Item>
         </Form>
       </Modal>
