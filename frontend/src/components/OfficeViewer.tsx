@@ -436,7 +436,7 @@ function XlsxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
                       type="text"
                       value={filters[i] || ''}
                       onChange={(e) => handleFilterChange(i, e.target.value)}
-                      placeholder="筛选..."
+                      placeholder="Filter..."
                       style={{
                         width: '100%',
                         padding: '4px 6px',
