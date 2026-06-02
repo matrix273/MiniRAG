@@ -172,7 +172,7 @@ uv sync
 # Configure environment variables
 cp .env.example .env
 # Edit .env file and configure the following required items:
-#   DATABASE_URL=postgresql+asyncpg://username:password@localhost:5432/pageindex
+#   DATABASE_URL=postgresql+asyncpg://username:password@localhost:5432/kb
 #   JWT_SECRET_KEY=your-jwt-secret-key
 
 # Create PostgreSQL database
@@ -214,7 +214,7 @@ Visit `http://localhost:5173`, the frontend will automatically proxy API request
 
 | Variable | Description | Required | Default Value |
 |----------|-------------|----------|---------------|
-| `DATABASE_URL` | PostgreSQL connection string | Yes | `postgresql+asyncpg://postgres:postgres@localhost:5432/pageindex` |
+| `DATABASE_URL` | PostgreSQL connection string | Yes | `postgresql+asyncpg://postgres:postgres@localhost:5432/kb` |
 | `JWT_SECRET_KEY` | JWT authentication secret | Yes | - |
 | `DEBUG` | Debug mode | No | `False` |
 | `UPLOAD_DIR` | File upload directory | No | `./uploads` |
