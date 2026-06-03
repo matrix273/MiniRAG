@@ -191,10 +191,10 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
                         fileUrl={fileUrl}
                         docId={currentDocId}
                       />
-                    ) : ['docx', 'xlsx'].includes(docType) ? (
+                    ) : ['docx', 'xlsx', 'pptx'].includes(docType) ? (
                       <OfficeViewer
                         fileUrl={fileUrl}
-                        fileType={docType as 'docx' | 'xlsx'}
+                        fileType={docType as 'docx' | 'xlsx' | 'pptx'}
                         docId={currentDocId}
                       />
                     ) : (
