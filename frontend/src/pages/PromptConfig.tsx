@@ -10,6 +10,7 @@ const { TextArea } = Input
 const CATEGORIES = [
   { key: 'agent_system', label: 'Agent System', description: 'Agent behavior and tool usage policy' },
   { key: 'rag_template', label: 'RAG Template', description: 'RAG Q&A answer format requirements' },
+  { key: 'visual_mode', label: 'Visual Mode', description: 'Visual analysis guidelines (appended when vision_enabled is on)' },
 ]
 
 // LLM 配置项
