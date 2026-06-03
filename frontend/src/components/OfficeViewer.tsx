@@ -558,15 +558,134 @@ function XlsxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
   )
 }
 
-function PptxViewer({ fileUrl }: { fileUrl: string }) {
+function PptxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
+  const contentRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [loading, setLoading] = useState(true)
+  const [scale, setScale] = useState(1)
+  const [baseWidth, setBaseWidth] = useState(0)
+  const [contentHeight, setContentHeight] = useState(0)
+  const resolvedDocId = docId || extractDocId(fileUrl)
+  const previewerRef = useRef<any>(null)
+  const baseWidthRef = useRef(0)
+
+  useEffect(() => {
+    if (!contentRef.current) return
+    let cancelled = false
+
+    const render = async () => {
+      setLoading(true)
+      try {
+        const { init } = await import('pptx-preview')
+        let blob: Blob
+        if (resolvedDocId) {
+          blob = await fileCache.fetch(resolvedDocId, fileUrl)
+        } else {
+          const response = await fetch(fileUrl)
+          blob = await response.blob()
+        }
+        if (!cancelled && contentRef.current) {
+          contentRef.current.innerHTML = ''
+          // 必须传 width：库依赖它计算 renderPort 和缩放，不传则幻灯片尺寸为 NaN/undefined 导致不可见
+          const previewer = init(contentRef.current, { mode: 'list', width: 960 })
+          previewerRef.current = previewer
+          const arrayBuffer = await blob.arrayBuffer()
+          await previewer.preview(arrayBuffer)
+          // 渲染完成后测量实际尺寸并计算初始缩放比
+          requestAnimationFrame(() => {
+            if (cancelled) return
+            const wrapper = contentRef.current?.querySelector('.pptx-preview-wrapper') as HTMLElement
+            if (wrapper) {
+              const w = wrapper.scrollWidth
+              const h = wrapper.scrollHeight
+              baseWidthRef.current = w > 0 ? w : 960
+              setBaseWidth(baseWidthRef.current)
+              setContentHeight(h || 0)
+              if (scrollRef.current && baseWidthRef.current > 0) {
+                const cw = scrollRef.current.clientWidth
+                setScale(cw / baseWidthRef.current)
+              }
+            }
+          })
+        }
+      } catch (err) {
+        if (!cancelled) message.error('Failed to render PPTX')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    render()
+
+    // ResizeObserver 监听容器宽度变化，只更新 scale 不重建 DOM
+    const observer = new ResizeObserver((entries) => {
+      if (cancelled) return
+      const cw = entries[0]?.contentRect?.width
+      if (!cw || cw <= 0) return
+      if (baseWidthRef.current > 0) {
+        setScale(cw / baseWidthRef.current)
+      }
+    })
+
+    if (scrollRef.current) {
+      observer.observe(scrollRef.current)
+    }
+
+    return () => {
+      cancelled = true
+      observer.disconnect()
+      if (previewerRef.current) {
+        try { previewerRef.current.destroy() } catch {}
+        previewerRef.current = null
+      }
+    }
+  }, [fileUrl, resolvedDocId])
+
   return (
-    <div style={{ textAlign: 'center', padding: 40 }}>
-      <Text type="secondary">
-        PowerPoint preview is not available in browser.{' '}
-        <a href={fileUrl} target="_blank" rel="noopener noreferrer">
-          Download file
-        </a>
-      </Text>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
+      <style>{`
+        .pptx-container {
+          background-color: #f0f0f0;
+        }
+        .pptx-container .pptx-preview-wrapper {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          background: #f0f0f0 !important;
+          padding: 16px 0;
+        }
+      `}</style>
+      {loading && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(255,255,255,0.8)', zIndex: 10,
+        }}>
+          <Spin tip="Loading..." />
+        </div>
+      )}
+      <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+        {/* 外层锚定 div：给滚动容器提供正确的缩放后尺寸 */}
+        <div
+          style={{
+            width: baseWidth > 0 ? `${baseWidth * scale}px` : '100%',
+            minHeight: baseWidth > 0 && contentHeight > 0 ? `${contentHeight * scale}px` : '100%',
+            position: 'relative',
+          }}
+        >
+          <div
+            ref={contentRef}
+            className="pptx-container"
+            style={{
+              transform: baseWidth > 0 ? `scale(${scale})` : undefined,
+              transformOrigin: 'top left',
+              position: baseWidth > 0 ? 'absolute' : 'relative',
+              top: 0,
+              left: 0,
+            }}
+          />
+        </div>
+      </div>
     </div>
   )
 }
@@ -580,7 +699,7 @@ export default function OfficeViewer({ fileUrl, fileType, docId }: OfficeViewerP
     case 'xlsx':
       return <div style={containerStyle}><XlsxViewer fileUrl={fileUrl} docId={docId} /></div>
     case 'pptx':
-      return <div style={containerStyle}><PptxViewer fileUrl={fileUrl} /></div>
+      return <div style={containerStyle}><PptxViewer fileUrl={fileUrl} docId={docId} /></div>
     default:
       return <Text type="secondary">Unsupported file type</Text>
   }
