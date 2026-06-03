@@ -2,7 +2,6 @@
 
 import os
 import asyncio
-import json
 import time
 from typing import Optional, List, Tuple
 from openai import AsyncOpenAI
@@ -147,6 +146,25 @@ async def create_model() -> TrackedChatCompletionsModel:
     )
 
 
+async def create_vision_model() -> Tuple[AsyncOpenAI, str]:
+    """Create an OpenAI client for the vision model from database config."""
+    llm_config = await get_llm_config()
+    
+    api_key = llm_config["dashscope_key"] or llm_config["openai_key"]
+    base_url = llm_config["api_base_url"]
+    
+    client = AsyncOpenAI(
+        base_url=base_url,
+        api_key=api_key,
+    )
+    
+    model_name = llm_config["vision_model"]
+    if "/" in model_name:
+        model_name = model_name.split("/", 1)[1]
+    
+    return client, model_name
+
+
 async def create_agent(
     doc_client,
     doc_id: str,
@@ -201,29 +219,113 @@ async def create_agent(
     
     # Add vision tools if enabled
     if include_vision_tools:
-        @function_tool
-        def get_page_images(pages: str) -> str:
-            """Get page images for visual analysis. Use tight ranges: e.g. '5-7', '3,8', '12'.
-            
-            Returns a list of page images with their page numbers. Useful for visual questions
-            about charts, diagrams, formulas, or layout.
-            """
-            import json
-            images = tracked.get_page_images(pages)
-            return json.dumps(images)
+        vision_client, vision_model_name = await create_vision_model()
         
         @function_tool
-        def get_page_images_base64(pages: str) -> str:
-            """Get page images as base64 encoded strings for visual analysis.
+        async def search_visual_content(query: str) -> str:
+            """Search for visual content (figures, charts, formulas) location by searching text.
             
-            Returns a list of page images with their page numbers and base64 data.
-            Useful for visual questions about charts, diagrams, formulas, or layout.
+            Use this tool when you need to find which page contains a specific figure, chart,
+            or diagram. This tool searches the document text to find where the figure is mentioned.
+            
+            Example: search_visual_content(query="Figure 2") or 
+                     search_visual_content(query="Scaled Dot-Product Attention")
             """
-            import json
+            # Get document info for page count
+            doc_info = tracked.get_document()
+            
+            # Extract page count from doc_info
+            page_count = 10  # default
+            try:
+                if isinstance(doc_info, str):
+                    import ast
+                    doc_dict = ast.literal_eval(doc_info)
+                    page_count = doc_dict.get('page_count', 10)
+            except:
+                pass
+            
+            # Search for the figure in text, chunk by chunk
+            chunk_size = 10 if page_count < 50 else 20
+            search_terms = [query, query.lower(), query.upper()]
+            
+            for start in range(1, page_count + 1, chunk_size):
+                end = min(start + chunk_size - 1, page_count)
+                content = tracked.get_page_content(f"{start}-{end}")
+                
+                # Check if query is mentioned in this chunk
+                for term in search_terms:
+                    if term in content:
+                        # Found it! Now find the exact page
+                        # Search page by page in this chunk
+                        for page in range(start, end + 1):
+                            page_content = tracked.get_page_content(str(page))
+                            if term in page_content:
+                                return f"找到 '{query}' 在第 {page} 页。\n\n相关文本片段:\n{page_content[:500]}..."
+            
+            return f"未在文档中找到 '{query}' 的明确提及。请尝试使用 get_page_content() 搜索更广泛的范围。"
+        
+        tools.append(search_visual_content)
+        
+        @function_tool
+        async def analyze_page_images(pages: str) -> str:
+            """Analyze PDF pages visually. Use tight ranges: e.g. '5-7', '3,8', '12'.
+            
+            RENDERS the specified pages as images and sends them to a vision model
+            for analysis. Returns a detailed description of charts, diagrams, formulas,
+            tables, and visual elements found on those pages.
+            Use this when text-based tools are insufficient for questions about
+            visual content.
+            """
             images = tracked.get_page_images_base64(pages)
-            return json.dumps(images)
+            
+            if not images:
+                return "No images could be generated for the specified pages."
+            
+            # Build vision model request with images as proper image_url blocks
+            # 获取请求的页码列表，用于提示视觉模型
+            requested_pages = [img['page'] for img in images]
+            pages_str = ", ".join(str(p) for p in requested_pages)
+            
+            content: list = [
+                {
+                    "type": "text",
+                    "text": (
+                        f"你正在分析 PDF 页面图像。请求的页码是: {pages_str}。\n\n"
+                        "重要提示：对于你分析的每一页，请在描述开头清楚地标注页码"
+                        "（例如：'第 4 页：'、'第 5-6 页：'）。\n\n"
+                        "请详细描述你在这些页面上看到的内容。\n\n"
+                        "针对不同类型的内容，请提供相应的详细描述：\n"
+                        "1. **图表/图形**：描述图表类型（柱状图、折线图等）、数据趋势、关键数值\n"
+                        "2. **数学公式**：写出完整的 LaTeX 公式，并解释每个符号的含义\n"
+                        "3. **表格**：列出表头和关键数据行\n"
+                        "4. **架构图/流程图**：描述各组件及其连接关系\n"
+                        "5. **文本内容**：提取关键段落和要点\n\n"
+                        "请确保描述足够详细，让读者无需查看图像就能完全理解内容。\n\n"
+                        "请使用中文回答。"
+                    ),
+                }
+            ]
+            
+            # Attach each page image
+            for img in images:
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{img['base64']}"},
+                })
+            
+            try:
+                resp = await vision_client.chat.completions.create(
+                    model=vision_model_name,
+                    messages=[{"role": "user", "content": content}],
+                    max_tokens=2048,
+                )
+                return resp.choices[0].message.content or "(vision model returned empty response)"
+            except Exception as e:
+                import logging
+                logging.getLogger("agent_service").warning(f"Vision model call failed: {e}")
+                return f"[Vision analysis failed: {e}]"
         
-        tools.extend([get_page_images, get_page_images_base64])
+        tools.append(analyze_page_images)
 
     if model is None:
         model = await create_model()
