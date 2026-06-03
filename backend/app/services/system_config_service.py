@@ -62,7 +62,17 @@ async def get_config_int(key: str, default: int = 0) -> int:
 async def list_configs():
     async with await _get_session() as db:
         result = await db.execute(select(SystemConfig).order_by(SystemConfig.key))
-        return result.scalars().all()
+        rows = result.scalars().all()
+        # 在 session 关闭前把数据取出，避免 DetachedInstanceError
+        return [
+            {
+                "key": row.key,
+                "value": row.value,
+                "description": row.description,
+                "updated_at": row.updated_at,
+            }
+            for row in rows
+        ]
 
 
 async def update_config(key: str, value: str):
@@ -76,8 +86,15 @@ async def update_config(key: str, value: str):
                 row = SystemConfig(key=key, value=value)
                 db.add(row)
             await db.commit()
+            # 刷新以获取服务端默认值（如 updated_at），在 session 内取出数据
+            await db.refresh(row)
             invalidate_cache(key)
-            return row
+            return {
+                "key": row.key,
+                "value": row.value,
+                "description": row.description,
+                "updated_at": row.updated_at,
+            }
         except Exception:
             await db.rollback()
             raise

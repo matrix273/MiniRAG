@@ -1394,28 +1394,13 @@ async def delete_prompt_version(category: str, prompt_id: str):
 @app.get("/api/system-configs")
 async def list_system_configs():
     from app.services.system_config_service import list_configs
-    configs = await list_configs()
-    return [
-        {
-            "key": c.key,
-            "value": c.value,
-            "description": c.description,
-            "updated_at": c.updated_at,
-        }
-        for c in configs
-    ]
+    return await list_configs()
 
 
 @app.put("/api/system-configs/{key}")
 async def update_system_config(key: str, data: SystemConfigUpdate):
     from app.services.system_config_service import update_config
-    config = await update_config(key, data.value)
-    return {
-        "key": config.key,
-        "value": config.value,
-        "description": config.description,
-        "updated_at": config.updated_at,
-    }
+    return await update_config(key, data.value)
 
 
 # ========== Debug: Vector DB Inspector ==========
