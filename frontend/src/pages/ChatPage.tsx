@@ -837,6 +837,60 @@ const ChatPage = () => {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [sidebarCollapsed])
 
+  // 键盘快捷键：Ctrl/Cmd + Shift + P 切换知识库预览，Esc 关闭预览
+  useEffect(() => {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+    const isFormField = (target: EventTarget | null) => {
+      if (!target || !(target instanceof HTMLElement)) return false
+      const tag = target.tagName
+      return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable
+    }
+
+    const togglePreview = () => {
+      if (showPdfOnly || showReferencePanel) {
+        setShowPdfOnly(false)
+        setShowReferencePanel(false)
+      } else {
+        setShowPdfOnly(true)
+      }
+      // 折叠/展开后刷新 PDF
+      setTimeout(() => {
+        const refreshFn = (window as any).__pdfViewerRefresh
+        if (refreshFn) refreshFn()
+      }, 100)
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Esc 关闭预览（始终生效，方便退出预览）
+      if (e.key === 'Escape' && (showPdfOnly || showReferencePanel)) {
+        // 如果焦点在表单元素上，让浏览器/组件自行处理 Esc（例如关闭自动补全）
+        if (isFormField(e.target)) return
+        e.preventDefault()
+        setShowPdfOnly(false)
+        setShowReferencePanel(false)
+        return
+      }
+
+      // 表单元素中输入时，不触发全局快捷键，避免冲突
+      if (isFormField(e.target)) return
+
+      // Ctrl/Cmd + Shift + P：切换知识库预览
+      // 避免与浏览器 Ctrl+P 打印、Cmd+Shift+P 隐身窗口等冲突，强制要求 Shift
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey) {
+        const k = e.key.toLowerCase()
+        if (k === 'p') {
+          e.preventDefault()
+          togglePreview()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPdfOnly, showReferencePanel])
+
+
   const fetchFoldersAndDocs = async () => {
     try {
       const [folderList, docs] = await Promise.all([
@@ -1758,7 +1812,7 @@ const ChatPage = () => {
         )}
 
         {/* PDF Preview Toggle Button - 右侧中央折叠按钮 */}
-        <Tooltip title={showPdfOnly || showReferencePanel ? "Close knowledge base preview" : "Show knowledge base preview"}>
+        <Tooltip title={(showPdfOnly || showReferencePanel ? "Close knowledge base preview" : "Show knowledge base preview") + " (Ctrl/Cmd + Shift + P, Esc)"}>
           <button
             onClick={() => {
               if (showPdfOnly || showReferencePanel) {
