@@ -61,7 +61,7 @@ export default function MDViewer({ fileUrl, docId }: MDViewerProps) {
         height: '100%',
         padding: 20 
       }}>
-        <Spin tip="Loading..." />
+        <Spin tip="Loading..." fullscreen />
       </div>
     )
   }
