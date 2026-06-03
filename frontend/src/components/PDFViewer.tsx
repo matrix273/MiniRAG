@@ -183,7 +183,8 @@ export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
         style={{
           flex: 1,
           minHeight: 0,
-          overflow: 'auto',
+          overflowX: 'hidden',
+          overflowY: 'auto',
           border: '1px solid #e5e7eb',
           borderTop: 'none',
           borderRadius: '0 0 8px 8px',
