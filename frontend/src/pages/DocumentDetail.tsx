@@ -118,7 +118,7 @@ const DocumentDetail = () => {
       label: 'Tree Structure',
       children: (
         structureLoading ? (
-          <Spin tip="Loading structure..." />
+          <Spin tip="Loading structure..." fullscreen />
         ) : structure.length > 0 ? (
           <DirectoryTree
             treeData={buildTreeData(structure)}
@@ -146,7 +146,7 @@ const DocumentDetail = () => {
   ]
 
   if (loading) {
-    return <Spin tip="Loading document..." style={{ display: 'block', marginTop: 100 }} />
+    return <Spin tip="Loading document..." fullscreen style={{ display: 'block', marginTop: 100 }} />
   }
 
   return (
