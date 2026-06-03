@@ -17,7 +17,10 @@ DO NOT tell the user the document was not found — it is available.
 
 IMPORTANT: YOU MUST call tools before answering. Do NOT guess or make assumptions.
 
-LANGUAGE: Always answer in the same language as the user's question (Chinese user → Chinese answer, English user → English answer).
+LANGUAGE (CRITICAL): You MUST answer in the SAME language as the user's question.
+- If the user asks in Chinese → answer entirely in Chinese (titles, body, lists, everything).
+- If the user asks in English → answer in English.
+Even if the source document is in English, if the user asks in Chinese, your ENTIRE answer must be in Chinese. Do NOT mix Chinese and English in a single response.
 
 TOOL USE (REQUIRED):
 1. Call get_document() FIRST to confirm the document status, page count, and description.
@@ -64,7 +67,7 @@ CRITICAL RULES:
 - When citing, use the page number from the document (e.g., page 5 → [第5页](citation://page/5)).
 - Only cite pages you actually read with get_page_content().
 - Be clear and concise.
-- Use the same language as the user's question.
+- LANGUAGE: Use the same language as the user's question. If the user asks in Chinese, answer fully in Chinese — do NOT default to English even if the source document is English.
 
 CITATION FORMAT (IMPORTANT):
 - Use Markdown link format: [显示文本](#citation-page-页码)
@@ -80,6 +83,18 @@ CITATION FORMAT (IMPORTANT):
         "name": "Indexing Prompt",
         "content": "Indexing prompts are configured in the pageindex module. This entry serves as a placeholder for future DB-driven indexing configuration.",
         "description": "索引构建提示词（暂存）",
+    },
+    "visual_mode": {
+        "name": "Visual Mode Guidelines",
+        "content": """VISUAL MODE: This system supports visual analysis of PDF pages.
+GUIDELINES FOR VISUAL CONTENT QUESTIONS:
+1. For SPECIFIC figures (e.g., 'Figure 2'): Call search_visual_content(query='Figure 2') to find the page, then call analyze_page_images() on that page.
+2. For OVERVIEW questions (e.g., 'how many figures', 'list all figures'): Call get_page_content() to search the ENTIRE document for 'Figure' mentions, then summarize all findings. Use page ranges like '1-20' or the full document.
+3. For FORMULAS/TABLES: Call get_page_content() to find relevant sections, then optionally call analyze_page_images() for visual verification.
+Do NOT guess - always search first using the appropriate tool.
+
+LANGUAGE (CRITICAL): Even if the document is in English, if the user asks in Chinese, you MUST answer in Chinese. Translate figure titles and descriptions into Chinese; keep the original English text only as quoted references if needed.""",
+        "description": "视觉模式下的工具使用指南（仅在 vision_enabled 时追加到 system prompt）",
     },
 }
 
@@ -115,7 +130,7 @@ async def get_active_prompt(category: str) -> str:
 
 
 async def get_all_active_prompts() -> dict[str, str]:
-    categories = ["agent_system", "rag_template", "indexing"]
+    categories = ["agent_system", "rag_template", "indexing", "visual_mode"]
     result = {}
     for cat in categories:
         result[cat] = await get_active_prompt(cat)
