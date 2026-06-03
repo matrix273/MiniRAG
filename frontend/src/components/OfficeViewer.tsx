@@ -653,6 +653,25 @@ function PptxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
           align-items: center;
           background: #f0f0f0 !important;
           padding: 16px 0;
+          counter-reset: slide-counter;
+        }
+        .pptx-container .pptx-preview-slide-wrapper {
+          counter-increment: slide-counter;
+        }
+        .pptx-container .pptx-preview-slide-wrapper::after {
+          content: counter(slide-counter);
+          position: absolute;
+          bottom: 10px;
+          left: 50%;
+          transform: translateX(-50%);
+          color: #999;
+          font-size: 13px;
+          font-weight: 500;
+          background: rgba(0,0,0,0.06);
+          padding: 2px 12px;
+          border-radius: 10px;
+          z-index: 10;
+          pointer-events: none;
         }
       `}</style>
       {loading && (
