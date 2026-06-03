@@ -310,11 +310,12 @@ class ChatService:
         # Inject pre-computed structure summary to skip get_document + get_document_structure tool calls
         if document.structure_summary:
             agent_prompt += f"\n\nDocument Structure:\n{document.structure_summary}"
-            # Override tool instructions: only get_page_content is available
+            # Override tool instructions: only get_page_content and analyze_page_images are available
             agent_prompt += (
                 "\n\nIMPORTANT: Document metadata and structure are already provided above. "
-                "You ONLY have access to the get_page_content() tool. "
-                "Call get_page_content(pages=\"5-7\") with tight page ranges to read specific content. "
+                "You have access to the following tools:\n"
+                "1. get_page_content(pages) - to read text content of specific pages\n"
+                "2. analyze_page_images(pages) - to analyze visual content (charts, diagrams, formulas) on pages\n"
                 "Do NOT attempt to call get_document() or get_document_structure() — they are not available."
             )
 
@@ -343,13 +344,9 @@ class ChatService:
         
         # Add vision instructions to prompt if vision is enabled
         if vision_enabled:
-            agent_prompt += (
-                "\n\nVISUAL MODE: This system supports visual analysis of PDF pages. "
-                "When you need to analyze charts, diagrams, formulas, or visual layouts, "
-                "use the get_page_images() or get_page_images_base64() tools to get page images. "
-                "Then analyze the images to answer visual questions. "
-                "Example: get_page_images(pages='5-7') to get images of pages 5-7."
-            )
+            visual_prompt = await get_active_prompt("visual_mode")
+            if visual_prompt:
+                agent_prompt += "\n\n" + visual_prompt
         
         agent, tracked_client = await create_agent(
             doc_client=self.doc_service.client,
