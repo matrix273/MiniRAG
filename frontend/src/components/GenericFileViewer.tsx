@@ -19,12 +19,7 @@ export default function GenericFileViewer({
   }
 
   const getDescription = () => {
-    switch (fileType) {
-      case 'pptx':
-        return 'PowerPoint documents cannot be previewed in the browser. Please download to view.'
-      default:
-        return `This file format (${fileType.toUpperCase()}) cannot be previewed in the browser. Please download to view.`
-    }
+    return `This file format (${fileType.toUpperCase()}) cannot be previewed in the browser. Please download to view.`
   }
 
   return (
