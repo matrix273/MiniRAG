@@ -2168,17 +2168,17 @@ const ChatPage = () => {
                     }
                     
                     // Office files
-                    if (['docx', 'xlsx'].includes(docType)) {
+                    if (['docx', 'xlsx', 'pptx'].includes(docType)) {
                       return (
                         <OfficeViewer
                           fileUrl={documentApi.getFileUrl(previewDocId)}
-                          fileType={docType as 'docx' | 'xlsx'}
+                          fileType={docType as 'docx' | 'xlsx' | 'pptx'}
                           docId={previewDocId}
                         />
                       )
                     }
                     
-                    // PowerPoint and other unsupported formats
+                    // Other unsupported formats
                     return (
                       <GenericFileViewer
                         fileUrl={documentApi.getFileUrl(previewDocId)}
