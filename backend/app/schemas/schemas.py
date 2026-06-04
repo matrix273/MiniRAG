@@ -21,6 +21,7 @@ class DocumentResponse(BaseModel):
     error_message: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    indexed_at: Optional[datetime] = None
     folder_id: Optional[str] = None
 
     class Config:
@@ -34,7 +35,10 @@ class DocumentListResponse(BaseModel):
     status: str
     doc_description: Optional[str] = None
     page_count: Optional[int] = None
+    line_count: Optional[int] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
+    indexed_at: Optional[datetime] = None
     folder_id: Optional[str] = None
 
     class Config:
