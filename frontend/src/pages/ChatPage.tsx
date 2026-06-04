@@ -19,6 +19,7 @@ import {
 } from '@ant-design/icons'
 import { chatApi, documentApi, folderApi } from '@/services/api'
 import type { ChatSession, Document, Folder } from '@/types'
+import { useChatStore } from '@/store/chatStore'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import remarkGfm from 'remark-gfm'
@@ -747,14 +748,17 @@ const ChatPage = () => {
   const { message } = App.useApp()
   const [documents, setDocuments] = useState<Document[]>([])
   const [sessions, setSessions] = useState<ChatSession[]>([])
-  const [currentSession, setCurrentSession] = useState<string | null>(() => {
-    const saved = localStorage.getItem('chatCurrentSession')
-    return saved || null
-  })
+  // zustand: 持久化状态（刷新后自动恢复）
+  const currentSession = useChatStore(s => s.currentSession)
+  const setCurrentSession = useChatStore(s => s.setCurrentSession)
+  const selectedDoc = useChatStore(s => s.selectedDoc)
+  const setSelectedDoc = useChatStore(s => s.setSelectedDoc)
+  const selectedDocs = useChatStore(s => s.selectedDocs)
+  const setSelectedDocs = useChatStore(s => s.setSelectedDocs)
+  const sidebarCollapsed = useChatStore(s => s.sidebarCollapsed)
+  const setSidebarCollapsed = useChatStore(s => s.setSidebarCollapsed)
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState('')
-  const [selectedDoc, setSelectedDoc] = useState<string | null>(null)
-  const [selectedDocs, setSelectedDocs] = useState<string[]>([])
   const [sending, setSending] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -768,10 +772,6 @@ const ChatPage = () => {
   const panelMountedRef = useRef(false) // 面板是否已挂载过（用于保持 DOM 不变、保留 iframe 滚动位置）
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    const saved = localStorage.getItem('chatSidebarCollapsed')
-    return saved ? JSON.parse(saved) : false
-  })
   const [chatWidth, setChatWidth] = useState(50) // percentage
   const inputRef = useRef<HTMLTextAreaElement>(null)
   // PDF preview panel state
@@ -824,7 +824,6 @@ const ChatPage = () => {
         e.preventDefault()
         const newCollapsed = !sidebarCollapsed
         setSidebarCollapsed(newCollapsed)
-        localStorage.setItem('chatSidebarCollapsed', JSON.stringify(newCollapsed))
         // 折叠/展开后刷新 PDF
         setTimeout(() => {
           const refreshFn = (window as any).__pdfViewerRefresh
@@ -1096,23 +1095,14 @@ const ChatPage = () => {
     }
   }
 
-  // 持久化 currentSession 到 localStorage
-  useEffect(() => {
-    if (currentSession) {
-      localStorage.setItem('chatCurrentSession', currentSession)
-    } else {
-      localStorage.removeItem('chatCurrentSession')
-    }
-  }, [currentSession])
-
   const loadAllSessions = async (restore = true) => {
     try {
       const allSessions = await chatApi.listAllSessions()
       setSessions(allSessions)
       setMessages([])
       if (restore) {
-        // 尝试恢复上次激活的会话——模拟点击会话
-        const savedSessionId = localStorage.getItem('chatCurrentSession')
+        // 尝试恢复上次激活的会话——模拟点击会话（从 zustand 持久化存储读取）
+        const savedSessionId = useChatStore.getState().currentSession
         const savedSession = allSessions.find(s => s.id === savedSessionId)
         if (savedSession) {
           await handleSelectSession(savedSession.id, savedSession)
@@ -1144,7 +1134,7 @@ const ChatPage = () => {
         setSelectedDoc(null)
         // 避免 setSelectedDocs([]) 触发 useEffect → loadAllSessions 清掉刚选中的会话
         // 只有当 selectedDocs 非空时才清空，否则保持不变（已经是 []）
-        setSelectedDocs(prev => prev.length > 0 ? [] : prev)
+        if (selectedDocs.length > 0) setSelectedDocs([])
       }
 
       // 切换会话时重置 PDF 预览状态，使其跟随新会话的文档
@@ -1168,6 +1158,7 @@ const ChatPage = () => {
 
     const primaryDocId = docIds[0]
     setSelectedDoc(primaryDocId)
+    setSelectedDocs(docIds) // 同步更新 selectedDocs，确保 TreeSelect checkbox 正确显示
 
     // 尝试找到一个已有会话，其 document_ids 与当前选中完全匹配
     const allSessions = await chatApi.listSessions(primaryDocId)
@@ -1417,7 +1408,6 @@ const ChatPage = () => {
               icon={<LeftOutlined />}
               onClick={() => {
                 setSidebarCollapsed(true)
-                localStorage.setItem('chatSidebarCollapsed', JSON.stringify(true))
                 // 折叠后刷新 PDF
                 setTimeout(() => {
                   const refreshFn = (window as any).__pdfViewerRefresh
@@ -1459,7 +1449,7 @@ const ChatPage = () => {
           </div>
           <TreeSelect
             style={{ width: '100%' }}
-            value={selectedDocs.map(id => ({ value: `doc:${id}`, checked: true }))}
+            value={selectedDocs.map(id => `doc:${id}`)}
             treeData={treeData}
             placeholder="Select knowledge base (optional, leave empty for auto-match)"
             treeDefaultExpandAll
@@ -1473,11 +1463,9 @@ const ChatPage = () => {
               String(node?.title ?? '').toLowerCase().includes(input.toLowerCase())
             }
             onChange={async (values: any[]) => {
-              // treeCheckStrictly 模式下 values 为 { value: string, checked: boolean }[]，提取 value 字符串
-              const stringValues = values.map(v => (typeof v === 'string' ? v : v.value))
+              const stringValues: string[] = Array.isArray(values) ? values.map((v: any) => (typeof v === 'string' ? v : v.value || v.label?.toString() || '')) : []
               const docIds = resolveTreeValues(stringValues)
               if (docIds.length === 0) {
-                // TreeSelect 自带的 X/tag 关闭等操作清空时，同步重置 selectedDoc 并刷新全量会话
                 setSelectedDoc(null)
                 setSelectedDocs([])
                 await loadAllSessions(false)
@@ -1486,7 +1474,6 @@ const ChatPage = () => {
               }
             }}
             treeCheckable
-            showCheckedStrategy={TreeSelect.SHOW_CHILD}
             styles={{ popup: { root: { borderRadius: 8 } } }}
           />
         </div>
@@ -1564,7 +1551,6 @@ const ChatPage = () => {
                     icon={<MenuOutlined />}
                     onClick={() => {
                       setSidebarCollapsed(false)
-                      localStorage.setItem('chatSidebarCollapsed', JSON.stringify(false))
                       setTimeout(() => {
                         const refreshFn = (window as any).__pdfViewerRefresh
                         if (refreshFn) refreshFn()
