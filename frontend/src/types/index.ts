@@ -8,6 +8,7 @@ export interface Document {
   line_count?: number
   created_at: string
   updated_at?: string
+  indexed_at?: string | null
   folder_id?: string | null
 }
 
