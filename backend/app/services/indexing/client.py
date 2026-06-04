@@ -166,7 +166,7 @@ class PageIndexClient:
                 'structure': result['structure'],
             }
 
-        elif mode == "pptx" or (mode == "auto" and is_pptx):
+        elif mode == "pptx" or (mode == "auto" and ext == '.pptx'):
             print(f"Indexing PPTX: {file_path}")
             from .parsers.office_to_tree import pptx_to_tree
             result = pptx_to_tree(
@@ -177,6 +177,21 @@ class PageIndexClient:
                 if_add_node_id='yes',
                 if_add_doc_description='yes',
             )
+            # Extract per-slide text so queries get the right slide content
+            structure = result['structure']
+            pages = []
+            def _walk_pptx_nodes(nodes):
+                for node in nodes:
+                    slide_num = node.get('start_index') or node.get('end_index', 0)
+                    if slide_num:
+                        pages.append({
+                            'page': slide_num,
+                            'content': f"## {node.get('title', '')}\n{node.get('text', '')}"
+                        })
+                    if node.get('nodes'):
+                        _walk_pptx_nodes(node['nodes'])
+            _walk_pptx_nodes(structure)
+
             self.documents[doc_id] = {
                 'id': doc_id,
                 'type': 'pptx',
@@ -184,7 +199,8 @@ class PageIndexClient:
                 'doc_name': result.get('doc_name', ''),
                 'doc_description': result.get('doc_description', ''),
                 'page_count': result.get('metadata', {}).get('slide_count', 0),
-                'structure': result['structure'],
+                'structure': structure,
+                'pages': pages,
             }
 
         else:
