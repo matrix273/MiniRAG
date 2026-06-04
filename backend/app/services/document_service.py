@@ -5,6 +5,8 @@ import logging
 import re
 from typing import Dict, Any, Optional, List
 import json
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -147,6 +149,7 @@ class DocumentService:
                 doc.doc_description = doc_info.get("doc_description", "")
                 doc.page_count = doc_info.get("page_count")
                 doc.line_count = doc_info.get("line_count")
+                doc.indexed_at = datetime.now(ZoneInfo("Asia/Shanghai"))
                 
                 # 保存原始页面文本用于调试和验证
                 # PageIndexClient 会将 pages 存储在 client.documents 中
@@ -181,7 +184,11 @@ class DocumentService:
         start_page: int, 
         end_page: int
     ) -> str:
-        """Extract content from structure for a page range."""
+        """Extract content from structure for a page range.
+        
+        For PDF/Office: uses start_index/end_index (page numbers).
+        For Markdown: uses line_num (line numbers).
+        """
         if not structure:
             return ""
         
@@ -189,15 +196,16 @@ class DocumentService:
         
         def traverse(nodes):
             for node in nodes:
-                node_start = node.get("start_index", 0)
-                node_end = node.get("end_index", 0)
+                # Determine node position: PDF uses start_index/end_index, Markdown uses line_num
+                node_start = node.get("start_index") or node.get("line_num", 0)
+                node_end = node.get("end_index") or node.get("line_num", 0)
                 
                 # Check if node overlaps with requested range
                 if node_start <= end_page and node_end >= start_page:
-                    # Collect node content if available
+                    # Collect node content if available (markdown uses 'text', PDF uses 'content')
                     title = node.get("title", "")
                     summary = node.get("summary", "")
-                    content = node.get("content", "")
+                    content = node.get("text") or node.get("content", "")
                     
                     # Build node text
                     node_text_parts = []
