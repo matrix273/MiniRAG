@@ -2019,13 +2019,18 @@ const ChatPage = () => {
       </div>
 
       {/* Reference Panel - 默认折叠，有引用时显示引用，无引用时显示 PDF */}
-      {/* 保持 DOM 不变，用 display 控制显隐，保留 iframe 页面和滚动位置 */}
+      {/* 保持 DOM 不变；隐藏时用 position:fixed 移到视口外保持 iframe 渲染，Safari 不回收 */}
       {(() => {
         const visible = (showPdfOnly && selectedDoc) || (showReferencePanel && activeCitations.length > 0)
         if (visible) panelMountedRef.current = true
         if (!panelMountedRef.current) return null
+        // 隐藏时：移出视口但保持正常宽度渲染（Safari 不会回收 iframe 内容）
+        // 可见时：正常 flex 布局
         return (
-        <div style={{ display: visible ? 'flex' : 'none', flex: 1, minWidth: 0 }}>
+        <div style={visible
+          ? { display: 'flex', flex: 1, minWidth: 0 }
+          : { position: 'fixed', top: 0, left: '150vw', width: `${100 - chatWidth}vw`, visibility: 'hidden', pointerEvents: 'none' }
+        }>
           {/* Resize Handle */}
           <div
             onPointerDown={(e) => {
