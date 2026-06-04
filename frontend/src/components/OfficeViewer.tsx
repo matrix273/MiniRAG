@@ -37,8 +37,11 @@ function DocxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
         }
         if (!cancelled && containerRef.current) {
           containerRef.current.innerHTML = ''
+          // 先通过 arrayBuffer 渲染（与测试页面一致）
+          const arrayBuffer = await blob.arrayBuffer()
           // 选项与 docx-preview-test.html 完全一致
-          await renderAsync(blob, containerRef.current, null, {
+          await renderAsync(arrayBuffer, containerRef.current, null, {
+            className: 'docx-wrapper',
             ignoreHeight: true,
             ignoreWidth: true,
             ignoreFonts: false,
@@ -46,6 +49,7 @@ function DocxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
             debug: false,
             experimentalMode: true,
             inWrapper: true,
+            hideWrapperOnPrint: true,
             trimXmlDeclaration: true,
             ignoreLastRenderedPageBreak: false,
             renderHeaders: true,
@@ -86,17 +90,38 @@ function DocxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
           overflow: auto;
         }
         .docx-chat-viewer .docx-wrapper {
-          background: transparent !important;
+          background: #fff !important;
           width: 100% !important;
           max-width: 100% !important;
+          counter-reset: docx-page-counter;
         }
         .docx-chat-viewer .docx-wrapper section {
+          position: relative;
           width: 100% !important;
           max-width: 100% !important;
           min-width: 100% !important;
           box-sizing: border-box !important;
           margin: 0 !important;
-          background: transparent !important;
+          padding: 0 !important;
+          padding-bottom: 36px !important;
+          overflow: visible !important;
+          background: #fff !important;
+          counter-increment: docx-page-counter;
+        }
+        .docx-chat-viewer .docx-wrapper section::after {
+          content: counter(docx-page-counter);
+          position: absolute;
+          bottom: 0;
+          left: 50%;
+          transform: translateX(-50%);
+          color: #999;
+          font-size: 13px;
+          font-weight: 500;
+          background: rgba(0,0,0,0.06);
+          padding: 2px 12px;
+          border-radius: 10px;
+          z-index: 10;
+          pointer-events: none;
         }
         .docx-chat-viewer .docx-wrapper section + section {
           margin-top: 24px !important;
