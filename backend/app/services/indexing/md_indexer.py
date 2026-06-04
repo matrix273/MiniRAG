@@ -4,7 +4,7 @@ import re
 import os
 
 from .utils import *
-from ...utils.llm import llm_completion, llm_acompletion, count_tokens, generate_summaries_for_structure, generate_doc_description, create_clean_structure_for_description
+from ...utils.llm import llm_completion, llm_acompletion, count_tokens, generate_node_summary, generate_summaries_for_structure, generate_doc_description, create_clean_structure_for_description
 
 async def get_node_summary(node, summary_token_threshold=200, model=None):
     node_text = node.get('text')
