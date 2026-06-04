@@ -340,17 +340,27 @@ class ChatService:
             agent_prompt += f"\nDescription: {document.doc_description}"
         if document.page_count:
             agent_prompt += f"\nPages: {document.page_count}"
+
+        # 从数据库获取 LLM 配置（在构建工具列表之前获取）
+        llm_config = await self._refresh_llm_config()
         
         # Inject pre-computed structure summary to skip get_document + get_document_structure tool calls
         if document.structure_summary:
             agent_prompt += f"\n\nDocument Structure:\n{document.structure_summary}"
-            # Override tool instructions: only get_page_content and analyze_page_images are available
+            tool_list = (
+                "1. get_page_content(pages) - to read text content of specific pages. "
+                "Use ranges like '5-7', '3,8', or '12'. "
+                "By default, ONLY read pages relevant to the user's question — do NOT read unnecessary pages. "
+                f"Read the FULL document (get_page_content('1-{document.page_count}')) only when the user "
+                "explicitly asks to see the full document, requests a comprehensive summary of the entire document, "
+                "or asks to translate the whole document."
+            )
+            if llm_config["vision_enabled"]:
+                tool_list += "\n2. analyze_page_images(pages) - to analyze visual content (charts, diagrams, formulas) on pages"
             agent_prompt += (
                 "\n\nIMPORTANT: Document metadata and structure are already provided above. "
-                "You have access to the following tools:\n"
-                "1. get_page_content(pages) - to read text content of specific pages\n"
-                "2. analyze_page_images(pages) - to analyze visual content (charts, diagrams, formulas) on pages\n"
-                "Do NOT attempt to call get_document() or get_document_structure() — they are not available."
+                f"You have access to the following tools (call them directly — they are fully functional):\n{tool_list}\n"
+                "Use the listed tools above. The get_document() and get_document_structure() tools are intentionally omitted because the structure is already in your context."
             )
 
         # Add chat history context
@@ -364,9 +374,6 @@ class ChatService:
         # Get agent guardrail params from DB
         max_turns = await get_config_int("agent_max_turns", 5)
         timeout_seconds = await get_config_int("agent_timeout_seconds", 60)
-
-        # 从数据库获取 LLM 配置
-        llm_config = await self._refresh_llm_config()
         
         # Create and run agent
         model = await create_model()
