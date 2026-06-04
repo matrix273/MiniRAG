@@ -61,6 +61,8 @@ def parse_pptx(file_path: Path) -> ParseResult:
             "level": 2,
             "title": f"Slide {slide_idx}",
             "text": "\n".join(slide_texts),
+            "start_index": slide_idx,
+            "end_index": slide_idx,
         })
 
     content = "\n\n".join(content_parts)
