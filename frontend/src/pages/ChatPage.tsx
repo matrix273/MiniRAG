@@ -274,10 +274,9 @@ interface MessageBubbleProps {
   onCitationClick?: (citations: Array<{ page: number; text: string; node_title?: string; document_id?: string }>, index: number) => void
   isSelected?: boolean
   onToggleSelect?: (msgId: string) => void
-  selectedDoc?: string | null
 }
 
-const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ msg, onCitationClick, isSelected, onToggleSelect, selectedDoc }) => {
+const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ msg, onCitationClick, isSelected, onToggleSelect }) => {
   const { message } = App.useApp()
   const isUser = msg.role === 'user'
   const [copied, setCopied] = useState(false)
@@ -571,7 +570,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ msg, onCitatio
                                 page: pageNum,
                                 text: '',
                                 node_title: children?.toString() || `Page ${pageNum}`,
-                                document_id: selectedDoc || undefined,
+                                document_id: undefined,
                               }
                               onCitationClick?.([tempCitation], 0)
                             }
@@ -763,6 +762,7 @@ const ChatPage = () => {
   const [sending, setSending] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const shouldScrollRef = useRef(false)  // 一次性标记：仅在发消息/切会话时触发滚动
   // Reference panel state - 默认折叠
   const [showReferencePanel, setShowReferencePanel] = useState(false)
   const [activeCitations, setActiveCitations] = useState<Array<{ page: number; text: string; node_title?: string }>>([])
@@ -792,8 +792,12 @@ const ChatPage = () => {
     }
   }
 
+  // 仅在新消息加入或切会话时滚动到底部，流式增量更新时不滚动
   useEffect(() => {
-    scrollToBottom()
+    if (shouldScrollRef.current) {
+      scrollToBottom()
+      shouldScrollRef.current = false
+    }
   }, [messages])
 
   // Handle scroll for show/hide scroll button
@@ -1017,6 +1021,7 @@ const ChatPage = () => {
       created_at: new Date().toISOString(),
     }
 
+    shouldScrollRef.current = true  // 发送新消息 → 允许滚动
     setMessages(prev => [...prev, userMsg])
     setInputMessage('')
     setSending(true)
@@ -1142,6 +1147,7 @@ const ChatPage = () => {
     setCurrentSession(sessionId)
 
     // 加载会话消息
+    shouldScrollRef.current = true  // 切会话 → 允许滚动
     const msgs = await chatApi.getMessages(sessionId)
     setMessages(msgs as Message[])
 
@@ -1743,7 +1749,7 @@ const ChatPage = () => {
                     animation: 'fadeIn 0.3s ease-out',
                   }}
                 >
-                  <MessageBubble msg={msg} onCitationClick={handleCitationClick} isSelected={selectedMessages.has(msg.id)} onToggleSelect={toggleMessageSelection} selectedDoc={selectedDoc} />
+                  <MessageBubble msg={msg} onCitationClick={handleCitationClick} isSelected={selectedMessages.has(msg.id)} onToggleSelect={toggleMessageSelection} />
                 </div>
               ))}
               {sending && (
