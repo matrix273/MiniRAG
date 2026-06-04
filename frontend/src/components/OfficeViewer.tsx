@@ -61,6 +61,15 @@ function DocxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
             renderComments: false,
             renderAltChunks: true,
           })
+          // 添加页码浮层徽章（与 docx-preview-test.html 方案一致）
+          const docxSections = containerRef.current.querySelectorAll('section.docx-wrapper, section')
+          docxSections.forEach((section, index) => {
+            if (section.querySelector(':scope > .page-number')) return
+            const pageNum = document.createElement('div')
+            pageNum.className = 'page-number'
+            pageNum.textContent = `第 ${index + 1} / ${docxSections.length} 页`
+            section.appendChild(pageNum)
+          })
         }
       } catch (err) {
         console.error('DOCX rendering error:', err)
@@ -93,7 +102,6 @@ function DocxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
           background: #fff !important;
           width: 100% !important;
           max-width: 100% !important;
-          counter-reset: docx-page-counter;
         }
         .docx-chat-viewer .docx-wrapper section {
           position: relative;
@@ -106,22 +114,22 @@ function DocxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
           padding-bottom: 36px !important;
           overflow: visible !important;
           background: #fff !important;
-          counter-increment: docx-page-counter;
         }
-        .docx-chat-viewer .docx-wrapper section::after {
-          content: counter(docx-page-counter);
+        /* 页码浮层徽章（与 docx-preview-test.html 方案一致） */
+        .docx-chat-viewer .page-number {
           position: absolute;
-          bottom: 0;
+          bottom: 8px;
           left: 50%;
           transform: translateX(-50%);
-          color: #999;
-          font-size: 13px;
-          font-weight: 500;
-          background: rgba(0,0,0,0.06);
-          padding: 2px 12px;
+          font-size: 11px;
+          color: #fff;
+          background: rgba(0,0,0,0.45);
+          padding: 2px 10px;
           border-radius: 10px;
           z-index: 10;
           pointer-events: none;
+          white-space: nowrap;
+          user-select: none;
         }
         .docx-chat-viewer .docx-wrapper section + section {
           margin-top: 24px !important;
