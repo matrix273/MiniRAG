@@ -752,6 +752,17 @@ async def send_message_stream(
                 if rag_template:
                     agent_prompt = f"{agent_prompt}\n\n{rag_template}"
 
+                # 将 {doc_id} 占位符替换为实际文档 ID
+                if documents:
+                    if len(documents) == 1:
+                        agent_prompt = agent_prompt.replace("{doc_id}", documents[0].id)
+                    else:
+                        # 多文档时，提供每个文档的 ID 映射，让 AI 在引用时使用
+                        doc_id_map = "\n".join(f"  - {doc.original_name}: {doc.id}" for doc in documents)
+                        agent_prompt += f"\n\nDocument IDs for citation:\n{doc_id_map}\nWhen citing, use the corresponding document ID from the list above."
+                        # 移除占位符，AI 会从上方的 ID 列表中选择对应的文档 ID 填入
+                        agent_prompt = agent_prompt.replace("{doc_id}", "文档ID")
+
                 # 从数据库获取 LLM 配置
                 llm_config = await get_llm_config()
                 
