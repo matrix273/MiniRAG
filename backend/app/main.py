@@ -787,12 +787,20 @@ async def send_message_stream(
                     # 注入预计算的结构摘要
                     if document.structure_summary:
                         agent_prompt += f"\n\nDocument Structure:\n{document.structure_summary}"
+                        tool_list = (
+                            "1. get_page_content(pages) - to read text content of specific pages. "
+                            "Use ranges like '5-7', '3,8', or '12'. "
+                            "By default, ONLY read pages relevant to the user's question — do NOT read unnecessary pages. "
+                            f"Read the FULL document (get_page_content('1-{document.page_count}')) only when the user "
+                            "explicitly asks to see the full document, requests a comprehensive summary of the entire document, "
+                            "or asks to translate the whole document."
+                        )
+                        if llm_config["vision_enabled"]:
+                            tool_list += "\n2. analyze_page_images(pages) - to analyze visual content (charts, diagrams, formulas) on pages"
                         agent_prompt += (
                             "\n\nIMPORTANT: Document metadata and structure are already provided above. "
-                            "You have access to the following tools:\n"
-                            "1. get_page_content(pages) - to read text content of specific pages\n"
-                            "2. analyze_page_images(pages) - to analyze visual content (charts, diagrams, formulas) on pages\n"
-                            "Do NOT attempt to call get_document() or get_document_structure() — they are not available."
+                            f"You have access to the following tools (call them directly — they are fully functional):\n{tool_list}\n"
+                            "Use the listed tools above. The get_document() and get_document_structure() tools are intentionally omitted because the structure is already in your context."
                         )
 
                     # 添加聊天历史
