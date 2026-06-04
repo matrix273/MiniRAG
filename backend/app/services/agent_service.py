@@ -209,7 +209,10 @@ async def create_agent(
 
     @function_tool
     def get_page_content(pages: str) -> str:
-        """Get the text content of specific pages. Use tight ranges: e.g. '5-7', '3,8', '12'.
+        """Get the text content of specific pages. Use ranges: '5-7', '3,8', '12'.
+        For most queries, only read pages relevant to the question.
+        Only read the full document ('1-N') when the user explicitly asks to see all content,
+        requests a comprehensive summary of the entire document, or needs full translation.
         
         Call this after understanding document structure to retrieve relevant content.
         """
