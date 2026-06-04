@@ -75,32 +75,51 @@ def _get_md_page_content(doc_info: dict, page_nums: list[int]) -> list[dict]:
 
 def _get_office_page_content(doc_info: dict, page_nums: list[int]) -> list[dict]:
     """
-    For Office documents (docx, xlsx, pptx), return the entire content when any page is requested.
-    These files don't have traditional pages - they have sections/sheets/slides.
-    We treat the entire file as one 'page' for simplicity.
+    For Office documents (docx, xlsx, pptx):
+    - pptx: each slide is treated as a 'page' — return text for requested slide numbers only.
+    - docx/xlsx: return the entire content when any page is requested (no traditional pages).
     """
-    # For Office files, return the entire structure text as page 1
     structure = doc_info.get('structure', [])
     if not structure:
         return []
-    
-    # Collect all text from the structure
+
+    doc_type = doc_info.get('type', '')
+
+    # PPTX: per-slide content retrieval by slide number
+    if doc_type == 'pptx':
+        results = []
+        page_set = set(page_nums)
+
+        def _traverse(nodes):
+            for node in nodes:
+                slide_num = node.get('start_index') or node.get('end_index', 0)
+                if slide_num in page_set:
+                    results.append({
+                        'page': slide_num,
+                        'content': f"## {node.get('title', '')}\n{node.get('text', '')}",
+                    })
+                if node.get('nodes'):
+                    _traverse(node['nodes'])
+
+        _traverse(structure)
+        results.sort(key=lambda x: x['page'])
+        return results
+
+    # DOCX / XLSX: return entire content as page 1 (no traditional page concept)
     all_text = []
-    def _traverse(nodes):
+    def _traverse_all(nodes):
         for node in nodes:
             text = node.get('text', '')
             if text:
                 all_text.append(text)
             if node.get('nodes'):
-                _traverse(node['nodes'])
-    
-    _traverse(structure)
-    
-    # If any page is requested, return the full content as page 1
-    # Accept any page number (0 or 1) since Office files don't have traditional pages
+                _traverse_all(node['nodes'])
+
+    _traverse_all(structure)
+
     if page_nums:
         return [{'page': 1, 'content': '\n\n'.join(all_text)}]
-    
+
     return []
 
 
