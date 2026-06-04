@@ -38,6 +38,21 @@ def _get_pageindex_client_class():
     return PageIndexClient
 
 
+def _sanitize_null_chars(data: Any) -> Any:
+    """Recursively strip \x00 (null) characters from strings in a data structure.
+    
+    PostgreSQL TEXT/VARCHAR/JSON columns reject \x00, which can sometimes
+    appear in LLM-generated text or PDF-extracted content.
+    """
+    if isinstance(data, str):
+        return data.replace('\x00', '')
+    elif isinstance(data, dict):
+        return {k: _sanitize_null_chars(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [_sanitize_null_chars(item) for item in data]
+    return data
+
+
 def _extract_structure_summary(structure, max_depth=2):
     """Extract a readable summary from document structure."""
     if not structure:
@@ -142,11 +157,11 @@ class DocumentService:
                 doc_info_str = self.client.get_document(indexed_doc_id)
                 doc_info = eval(doc_info_str) if isinstance(doc_info_str, str) else doc_info_str
                 
-                # Update document record
+                # Update document record (sanitize to strip \x00 which PostgreSQL rejects)
                 doc.status = "completed"
-                doc.structure = structure
-                doc.structure_summary = _extract_structure_summary(structure)
-                doc.doc_description = doc_info.get("doc_description", "")
+                doc.structure = _sanitize_null_chars(structure)
+                doc.structure_summary = _sanitize_null_chars(_extract_structure_summary(structure))
+                doc.doc_description = _sanitize_null_chars(doc_info.get("doc_description", ""))
                 doc.page_count = doc_info.get("page_count")
                 doc.line_count = doc_info.get("line_count")
                 doc.indexed_at = datetime.now(ZoneInfo("Asia/Shanghai"))
@@ -154,7 +169,7 @@ class DocumentService:
                 # 保存原始页面文本用于调试和验证
                 # PageIndexClient 会将 pages 存储在 client.documents 中
                 if indexed_doc and "pages" in indexed_doc:
-                    doc.pages = indexed_doc["pages"]
+                    doc.pages = _sanitize_null_chars(indexed_doc["pages"])
 
                 # Map DB doc_id to PageIndexClient so Agent tools can find the document
                 if indexed_doc_id != doc.id:
@@ -170,13 +185,24 @@ class DocumentService:
                 await db.commit()
                 
             except Exception as e:
-                # Update status to error
-                result = await db.execute(select(Document).where(Document.id == doc_id))
-                doc = result.scalar_one_or_none()
-                if doc:
-                    doc.status = "error"
-                    doc.error_message = str(e)
-                    await db.commit()
+                # 如果主流程 commit 失败，session 已进入 rolled-back 状态，
+                # 需要先 rollback 才能继续操作，否则会抛 PendingRollbackError
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass  # session 可能已经被回收
+
+                # 重新获取 doc 并改为 error 状态（使用新 session 保险起见）
+                try:
+                    result = await db.execute(select(Document).where(Document.id == doc_id))
+                    doc = result.scalar_one_or_none()
+                    if doc:
+                        doc.status = "error"
+                        doc.error_message = _sanitize_null_chars(str(e))
+                        await db.commit()
+                except Exception as inner_e:
+                    logging.error(f"Failed to update document status for {doc_id}: {inner_e}")
+                logging.error(f"Document indexing failed for {doc_id}: {e}")
     
     def get_content_from_structure(
         self, 
