@@ -143,7 +143,7 @@ function DocxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: 'rgba(255,255,255,0.8)', zIndex: 10,
         }}>
-          <Spin tip="Loading..." fullscreen />
+          <Spin tip="Loading..." />
         </div>
       )}
       <div
@@ -269,7 +269,7 @@ function XlsxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
     })
   }
 
-  if (loading) return <Spin tip="Loading..." fullscreen />
+  if (loading) return <Spin tip="Loading..." />
   if (!sheetData) return <Text type="secondary">No data</Text>
 
   const filteredRows = getFilteredRows()
@@ -679,7 +679,7 @@ function PptxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: 'rgba(255,255,255,0.8)', zIndex: 10,
         }}>
-          <Spin tip="Loading..." fullscreen />
+          <Spin tip="Loading..." />
         </div>
       )}
       <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
