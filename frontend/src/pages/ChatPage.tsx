@@ -747,7 +747,10 @@ const ChatPage = () => {
   const { message } = App.useApp()
   const [documents, setDocuments] = useState<Document[]>([])
   const [sessions, setSessions] = useState<ChatSession[]>([])
-  const [currentSession, setCurrentSession] = useState<string | null>(null)
+  const [currentSession, setCurrentSession] = useState<string | null>(() => {
+    const saved = localStorage.getItem('chatCurrentSession')
+    return saved || null
+  })
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState('')
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null)
@@ -816,11 +819,18 @@ const ChatPage = () => {
     }
   }, [selectedDocs])
 
-  // 键盘快捷键：Ctrl/Cmd + B 折叠/展开聊天记录侧边栏
+  // 键盘快捷键：q 折叠/展开聊天记录侧边栏
   useEffect(() => {
+    const isFormField = (target: EventTarget | null) => {
+      if (!target || !(target instanceof HTMLElement)) return false
+      const tag = target.tagName
+      return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable
+    }
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+B (Windows/Linux) 或 Cmd+B (Mac)
-      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+      // 表单元素中输入时跳过
+      if (isFormField(e.target)) return
+      if (e.key === 'q') {
         e.preventDefault()
         const newCollapsed = !sidebarCollapsed
         setSidebarCollapsed(newCollapsed)
@@ -837,7 +847,7 @@ const ChatPage = () => {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [sidebarCollapsed])
 
-  // 键盘快捷键：Ctrl/Cmd + Shift + P 切换知识库预览，Esc 关闭预览
+  // 键盘快捷键：w 切换知识库预览，Esc 关闭预览
   useEffect(() => {
     const isFormField = (target: EventTarget | null) => {
       if (!target || !(target instanceof HTMLElement)) return false
@@ -873,14 +883,10 @@ const ChatPage = () => {
       // 表单元素中输入时，不触发全局快捷键，避免冲突
       if (isFormField(e.target)) return
 
-      // Ctrl/Cmd + Shift + P：切换知识库预览
-      // 避免与浏览器 Ctrl+P 打印、Cmd+Shift+P 隐身窗口等冲突，强制要求 Shift
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey) {
-        const k = e.key.toLowerCase()
-        if (k === 'p') {
-          e.preventDefault()
-          togglePreview()
-        }
+      // w：切换知识库预览
+      if (e.key === 'w') {
+        e.preventDefault()
+        togglePreview()
       }
     }
 
@@ -1100,12 +1106,29 @@ const ChatPage = () => {
     }
   }
 
+  // 持久化 currentSession 到 localStorage
+  useEffect(() => {
+    if (currentSession) {
+      localStorage.setItem('chatCurrentSession', currentSession)
+    } else {
+      localStorage.removeItem('chatCurrentSession')
+    }
+  }, [currentSession])
+
   const loadAllSessions = async () => {
     try {
       const allSessions = await chatApi.listAllSessions()
       setSessions(allSessions)
-      setCurrentSession(null)
       setMessages([])
+      // 尝试恢复上次激活的会话
+      const savedSessionId = localStorage.getItem('chatCurrentSession')
+      if (savedSessionId && allSessions.some(s => s.id === savedSessionId)) {
+        setCurrentSession(savedSessionId)
+        const msgs = await chatApi.getMessages(savedSessionId)
+        setMessages(msgs as Message[])
+      } else {
+        setCurrentSession(null)
+      }
     } catch {
       message.error('Failed to load sessions')
     }
@@ -1397,7 +1420,7 @@ const ChatPage = () => {
       >
         {/* Collapse Button */}
         <div style={{ padding: 8, borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end' }}>
-          <Tooltip title="Collapse chat history (Ctrl/Cmd + B)">
+          <Tooltip title="Collapse chat history (q)">
             <Button
               type="text"
               size="small"
@@ -1546,7 +1569,7 @@ const ChatPage = () => {
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
               {sidebarCollapsed && (
-                <Tooltip title="Expand chat history (Ctrl/Cmd + B)">
+                <Tooltip title="Expand chat history (q)">
                   <Button
                     type="text"
                     icon={<MenuOutlined />}
@@ -1811,7 +1834,7 @@ const ChatPage = () => {
         )}
 
         {/* PDF Preview Toggle Button - 右侧中央折叠按钮 */}
-        <Tooltip title={(showPdfOnly || showReferencePanel ? "Close knowledge base preview" : "Show knowledge base preview") + " (Ctrl/Cmd + Shift + P, Esc)"}>
+        <Tooltip title={(showPdfOnly || showReferencePanel ? "Close knowledge base preview" : "Show knowledge base preview") + " (w, Esc)"}>
           <button
             onClick={() => {
               if (showPdfOnly || showReferencePanel) {
