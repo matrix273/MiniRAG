@@ -785,9 +785,11 @@ const ChatPage = () => {
   const [folders, setFolders] = useState<Folder[]>([])
   const [treeData, setTreeData] = useState<any[]>([])
 
-  // Auto scroll to bottom
+  // Auto scroll to bottom (instant, no animation)
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
   }
 
   useEffect(() => {
@@ -1470,7 +1472,7 @@ const ChatPage = () => {
           </div>
           <TreeSelect
             style={{ width: '100%' }}
-            value={selectedDocs.map(id => `doc:${id}`)}
+            value={selectedDocs.map(id => ({ value: `doc:${id}`, label: '' }))}
             treeData={treeData}
             placeholder="Select knowledge base (optional, leave empty for auto-match)"
             treeDefaultExpandAll
@@ -1611,15 +1613,13 @@ const ChatPage = () => {
                     <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4 }}>
                       <Dropdown
                         trigger={['hover', 'click']}
-                        overlay={
-                          <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', padding: 8, maxWidth: 300 }}>
-                            {selectedDocsInfo.map(d => (
-                              <div key={d!.id} style={{ padding: '8px 12px', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {d!.filename} ({d!.page_count} pages)
-                              </div>
-                            ))}
-                          </div>
-                        }
+                        menu={{
+                          items: selectedDocsInfo.map(d => ({
+                            key: d!.id,
+                            label: <span style={{ fontSize: 13 }}>{d!.filename} ({d!.page_count} pages)</span>,
+                            disabled: true,
+                          })),
+                        }}
                       >
                         <span style={{ cursor: 'pointer', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {selectedDocsInfo.map(d => d!.filename.split('.')[0]).join(', ')}
