@@ -65,6 +65,7 @@ CRITICAL RULES:
   • Do NOT put display formulas ($$ ... $$) on the same line as other text.
 - Cite sources using Markdown link format: [页码](citation://page/页码)
 - When citing, use the page number from the document (e.g., page 5 → [第5页](citation://page/5)).
+  For PowerPoint (PPTX) documents, 'pages' correspond to slide numbers (Slide 1 = page 1, Slide 2 = page 2, etc.).
 - Only cite pages you actually read with get_page_content().
 - Be clear and concise.
 - LANGUAGE: Use the same language as the user's question. If the user asks in Chinese, answer fully in Chinese — do NOT default to English even if the source document is English.
@@ -76,7 +77,7 @@ CITATION FORMAT (IMPORTANT):
   • Page 8 shows additional details [第8页](#citation-page-8).
   • This parameter is defined in [第12页](#citation-page-12) and [第15页](#citation-page-15).
 - Do NOT use [1], [2], [3] markers. Always use the #citation-page-N format.
-- The display text should be descriptive (e.g., "第5页", "Page 5", "Section 2.1")""",
+- The display text should be descriptive (e.g., "第5页", "Page 5", "Slide 3", "Section 2.1")""",
         "description": "RAG 问答答案格式要求",
     },
     "indexing": {
