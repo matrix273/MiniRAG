@@ -552,11 +552,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ msg, onCitatio
                     )
                   },
                   a({ href, children, ...props }: any) {
-                    // 检查是否是 citation 链接: #citation-page-N
-                    const citationMatch = href?.match(/^#citation-page-(\d+)$/)
+                    // 检查是否是 citation 链接: #citation-DOC_ID-page-N
+                    const citationMatch = href?.match(/^#citation-([\w-]+)-page-(\d+)$/)
                     if (citationMatch) {
-                      const pageNum = parseInt(citationMatch[1], 10)
-                      const citationIndex = msg.citations?.findIndex(c => c.page === pageNum) ?? -1
+                      const docIdFromLink = citationMatch[1]
+                      const pageNum = parseInt(citationMatch[2], 10)
+                      // 优先按 document_id 匹配 citation
+                      const citationIndex = msg.citations?.findIndex(
+                        c => c.document_id === docIdFromLink && c.page === pageNum
+                      ) ?? -1
                       
                       return (
                         <button
@@ -566,11 +570,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ msg, onCitatio
                             if (citationIndex >= 0 && msg.citations) {
                               onCitationClick?.(msg.citations, citationIndex)
                             } else {
+                              // 回退：从链接中提取 doc_id，或从其他 citation 找
                               const tempCitation = {
                                 page: pageNum,
                                 text: '',
                                 node_title: children?.toString() || `Page ${pageNum}`,
-                                document_id: undefined,
+                                document_id: docIdFromLink || msg.citations?.find(c => c.document_id)?.document_id,
                               }
                               onCitationClick?.([tempCitation], 0)
                             }
@@ -765,7 +770,7 @@ const ChatPage = () => {
   const shouldScrollRef = useRef(false)  // 一次性标记：仅在发消息/切会话时触发滚动
   // Reference panel state - 默认折叠
   const [showReferencePanel, setShowReferencePanel] = useState(false)
-  const [activeCitations, setActiveCitations] = useState<Array<{ page: number; text: string; node_title?: string }>>([])
+  const [activeCitations, setActiveCitations] = useState<Array<{ page: number; text: string; node_title?: string; document_id?: string }>>([])
   const [selectedCitationIndex, setSelectedCitationIndex] = useState<number | null>(null)
 
   // PDF 面板状态 - 用于无引用时显示 PDF
@@ -1213,7 +1218,7 @@ const ChatPage = () => {
     }
   }
 
-  const handleCitationClick = useCallback((citations: Array<{ page: number; text: string; node_title?: string }>, index: number) => {
+  const handleCitationClick = useCallback((citations: Array<{ page: number; text: string; node_title?: string; document_id?: string }>, index: number) => {
     setActiveCitations(citations)
     setSelectedCitationIndex(index)
     setShowReferencePanel(true)
@@ -1340,7 +1345,7 @@ const ChatPage = () => {
     for (const msg of msgsToExport) {
       const roleLabel = msg.role === 'user' ? '👤 User' : msg.role === 'assistant' ? '🤖 AI' : '⚙️ System'
       const time = new Date(msg.created_at).toLocaleString('en-US')
-      const hasCitationLinks = msg.role === 'assistant' && /\(#citation-page-\d+\)/.test(msg.content)
+      const hasCitationLinks = msg.role === 'assistant' && /\(#citation-[\w-]+-page-\d+\)/.test(msg.content)
 
       // 消息分隔符 + 角色标识
       lines.push('---')
@@ -1350,13 +1355,13 @@ const ChatPage = () => {
       if (msg.role === 'assistant') {
         // 处理 AI 消息：将 citation 链接转为纯文本引用
         let content = msg.content
-        // 匹配 [text](#citation-page-N) 格式的 citation 链接
+        // 匹配 [text](#citation-DOC_ID-page-N) 格式的 citation 链接
         content = content.replace(
-          /\[([^\]]*)\]\(#citation-page-(\d+)\)/g,
-          (_match, displayText, pageNum) => {
+          /\[([^\]]*)\]\(#citation-([\w-]+)-page-(\d+)\)/g,
+          (_match, displayText, docId, pageNum) => {
             const pNum = parseInt(pageNum, 10)
             // 尝试在 citations 数组中找到对应条目获取引用原文
-            const citation = msg.citations?.find(c => c.page === pNum)
+            const citation = msg.citations?.find(c => c.document_id === docId && c.page === pNum) || msg.citations?.find(c => c.page === pNum)
             const snippet = citation?.text
               ? `: "${citation.text.slice(0, 80)}${citation.text.length > 80 ? '...' : ''}"`
               : ''
