@@ -19,11 +19,14 @@ def build_tree_from_sections(sections: list[dict]) -> list[dict]:
 
     for section in sections:
         level = section["level"]
+        # 提取透传字段（除 level, title, text 外的所有字段，如 start_index, end_index 等）
+        extra = {k: v for k, v in section.items() if k not in ("level", "title", "text")}
         node = {
             "title": section["title"],
             "node_id": str(node_counter).zfill(4),
             "text": section.get("text", ""),
             "nodes": [],
+            **extra,
         }
         node_counter += 1
 
