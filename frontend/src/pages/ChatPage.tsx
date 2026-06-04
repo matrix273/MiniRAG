@@ -131,7 +131,6 @@ const SessionItem: React.FC<{
 }> = React.memo(({ session, isActive, onSelect, onDelete, onRename }) => {
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState(session.title)
-  const [showActions, setShowActions] = useState(false)
 
   const handleRename = () => {
     if (editTitle.trim() && editTitle !== session.title) {
@@ -142,9 +141,8 @@ const SessionItem: React.FC<{
 
   return (
     <div
+      className="session-item"
       onClick={onSelect}
-      onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => setShowActions(false)}
       style={{
         padding: '12px 16px',
         borderRadius: 8,
@@ -209,8 +207,9 @@ const SessionItem: React.FC<{
       )}
       
       {/* Action buttons */}
-      {showActions && !isEditing && (
+      {!isEditing && (
         <div
+          className="session-item-actions"
           style={{
             position: 'absolute',
             right: 8,
@@ -789,6 +788,7 @@ const ChatPage = () => {
   // 知识库树状态
   const [folders, setFolders] = useState<Folder[]>([])
   const [treeData, setTreeData] = useState<any[]>([])
+  const [treeSelectOpen, setTreeSelectOpen] = useState(false)
 
   // Auto scroll to bottom (instant, no animation)
   const scrollToBottom = () => {
@@ -1492,6 +1492,8 @@ const ChatPage = () => {
             maxTagCount="responsive"
             treeCheckStrictly
             allowClear
+            open={treeSelectOpen}
+            onDropdownVisibleChange={setTreeSelectOpen}
             getPopupContainer={() => document.body}
             filterTreeNode={(input, node) =>
               String(node?.title ?? '').toLowerCase().includes(input.toLowerCase())
