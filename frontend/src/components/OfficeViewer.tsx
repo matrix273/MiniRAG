@@ -40,14 +40,14 @@ function DocxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
           // 先通过 arrayBuffer 渲染（与测试页面一致）
           const arrayBuffer = await blob.arrayBuffer()
           // 选项与 docx-preview-test.html 完全一致
-          await renderAsync(arrayBuffer, containerRef.current, null, {
+          await renderAsync(arrayBuffer, containerRef.current, undefined, {
             className: 'docx-wrapper',
             ignoreHeight: true,
             ignoreWidth: true,
             ignoreFonts: false,
             breakPages: true,
             debug: false,
-            experimentalMode: true,
+            experimental: true,
             inWrapper: true,
             hideWrapperOnPrint: true,
             trimXmlDeclaration: true,
