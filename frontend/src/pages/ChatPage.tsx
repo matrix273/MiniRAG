@@ -767,6 +767,7 @@ const ChatPage = () => {
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const shouldScrollRef = useRef(false)  // 一次性标记：仅在发消息/切会话时触发滚动
+  const userScrolledUpRef = useRef(false) // 用户是否主动上滚（用于流式输出时控制是否自动跟随）
   // Reference panel state - 默认折叠
   const [showReferencePanel, setShowReferencePanel] = useState(false)
   const [activeCitations, setActiveCitations] = useState<Array<{ page: number; text: string; node_title?: string; document_id?: string }>>([])
@@ -792,6 +793,7 @@ const ChatPage = () => {
 
   // Auto scroll to bottom (instant, no animation)
   const scrollToBottom = () => {
+    userScrolledUpRef.current = false
     if (messagesContainerRef.current) {
       messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
     }
@@ -809,7 +811,12 @@ const ChatPage = () => {
   const handleScroll = () => {
     if (messagesContainerRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current
-      setShowScrollBtn(scrollHeight - scrollTop - clientHeight > 100)
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+      // 用户明显上滚（距离底部超过一行以上），标记为主动上滚
+      if (distanceFromBottom > 200) {
+        userScrolledUpRef.current = true
+      }
+      setShowScrollBtn(distanceFromBottom > 100)
     }
   }
 
@@ -1027,6 +1034,7 @@ const ChatPage = () => {
     }
 
     shouldScrollRef.current = true  // 发送新消息 → 允许滚动
+    userScrolledUpRef.current = false // 重置上滚标记，新消息时自动跟随
     setMessages(prev => [...prev, userMsg])
     setInputMessage('')
     setSending(true)
@@ -1062,6 +1070,10 @@ const ChatPage = () => {
           ? { ...msg, content: msg.content + chunk }
           : msg
       ))
+      // 流式输出时自动跟随底部（仅当用户未主动上滚）
+      if (!userScrolledUpRef.current) {
+        requestAnimationFrame(scrollToBottom)
+      }
     }
 
     try {
@@ -1095,6 +1107,10 @@ const ChatPage = () => {
                 }
               : msg
           ))
+          // 完成后若用户未上滚则回到底部
+          if (!userScrolledUpRef.current) {
+            setTimeout(scrollToBottom, 50)
+          }
         },
         // onError: 错误
         (error) => {
@@ -1153,6 +1169,7 @@ const ChatPage = () => {
 
     // 加载会话消息
     shouldScrollRef.current = true  // 切会话 → 允许滚动
+    userScrolledUpRef.current = false // 重置上滚标记
     const msgs = await chatApi.getMessages(sessionId)
     setMessages(msgs as Message[])
 
