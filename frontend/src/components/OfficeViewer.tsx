@@ -680,7 +680,7 @@ export default function OfficeViewer({ fileUrl, fileType, docId }: OfficeViewerP
 
   switch (fileType) {
     case 'docx':
-      return <div style={containerStyle}><DocxViewer fileUrl={fileUrl} docId={docId} /></div>
+      return <DocxViewer fileUrl={fileUrl} docId={docId} />
     case 'xlsx':
       return <div style={containerStyle}><XlsxViewer fileUrl={fileUrl} docId={docId} /></div>
     case 'pptx':
