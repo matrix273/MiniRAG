@@ -765,6 +765,7 @@ const ChatPage = () => {
 
   // PDF 面板状态 - 用于无引用时显示 PDF
   const [showPdfOnly, setShowPdfOnly] = useState(false)
+  const panelMountedRef = useRef(false) // 面板是否已挂载过（用于保持 DOM 不变、保留 iframe 滚动位置）
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -2018,8 +2019,13 @@ const ChatPage = () => {
       </div>
 
       {/* Reference Panel - 默认折叠，有引用时显示引用，无引用时显示 PDF */}
-      {((showPdfOnly && selectedDoc) || (showReferencePanel && activeCitations.length > 0)) && (
-        <>
+      {/* 保持 DOM 不变，用 display 控制显隐，保留 iframe 页面和滚动位置 */}
+      {(() => {
+        const visible = (showPdfOnly && selectedDoc) || (showReferencePanel && activeCitations.length > 0)
+        if (visible) panelMountedRef.current = true
+        if (!panelMountedRef.current) return null
+        return (
+        <div style={{ display: visible ? 'flex' : 'none', flex: 1, minWidth: 0 }}>
           {/* Resize Handle */}
           <div
             onPointerDown={(e) => {
@@ -2255,8 +2261,9 @@ const ChatPage = () => {
               </div>
             )}
           </div>
-        </>
-      )}
+        </div>
+        )
+      })()}
 
       {/* Animations */}
       <style>{`
