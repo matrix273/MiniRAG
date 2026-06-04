@@ -839,7 +839,6 @@ const ChatPage = () => {
 
   // 键盘快捷键：Ctrl/Cmd + Shift + P 切换知识库预览，Esc 关闭预览
   useEffect(() => {
-    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
     const isFormField = (target: EventTarget | null) => {
       if (!target || !(target instanceof HTMLElement)) return false
       const tag = target.tagName
