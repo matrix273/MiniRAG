@@ -941,19 +941,29 @@ async def send_message_stream(
                     if _stream_buf and not _in_tool_block:
                         yield f"data: {json.dumps({'type': 'delta', 'content': _stream_buf})}\n\n"
 
-                    # 构建多文档 citations
+                    # 构建多文档 citations，确保每篇文档至少有一条 citation
                     multi_citations = []
                     for doc in documents:
                         pages = doc.pages if hasattr(doc, 'pages') and doc.pages else []
+                        has_pages = False
                         if pages:
                             for pd in pages[:3]:
                                 if isinstance(pd, dict):
+                                    has_pages = True
                                     multi_citations.append({
                                         "page": pd.get("page", 0),
                                         "text": pd.get("content", "")[:2000],
                                         "node_title": f"{doc.original_name} - Page {pd.get('page', 0)}",
                                         "document_id": doc.id,
                                     })
+                        # Markdown 等无页码文档：添加兜底 citation
+                        if not has_pages:
+                            multi_citations.append({
+                                "page": 0,
+                                "text": doc.doc_description or "",
+                                "node_title": doc.original_name,
+                                "document_id": doc.id,
+                            })
                     citations = [c["page"] for c in multi_citations]
                     # 清理工具引用
                     cleaned_text = chat_service._cleanup_tool_references(full_text)
@@ -1015,20 +1025,29 @@ async def send_message_stream(
                                 for c in raw_citations
                             ] if raw_citations else None
                         elif len(documents) > 1:
-                            # 多文档：重新构建 citations 用于 DB 保存
+                            # 多文档：重新构建 citations 用于 DB 保存，确保每篇文档至少有一条
                             from app.services.document_service import _extract_structure_summary
                             all_citations = []
                             for doc in documents:
                                 pages = doc.pages if hasattr(doc, 'pages') and doc.pages else []
+                                has_pages = False
                                 if pages:
                                     for pd in pages[:3]:
                                         if isinstance(pd, dict):
+                                            has_pages = True
                                             all_citations.append({
                                                 "page": pd.get("page", 0),
                                                 "text": pd.get("content", "")[:2000],
                                                 "node_title": f"{doc.original_name} - Page {pd.get('page', 0)}",
                                                 "document_id": doc.id,
                                             })
+                                if not has_pages:
+                                    all_citations.append({
+                                        "page": 0,
+                                        "text": doc.doc_description or "",
+                                        "node_title": doc.original_name,
+                                        "document_id": doc.id,
+                                    })
                             formatted_citations = all_citations[:5] if all_citations else None
 
                     async with async_session() as save_db:
