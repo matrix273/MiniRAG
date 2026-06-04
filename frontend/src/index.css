@@ -59,3 +59,23 @@ body {
   background-color: #ffffff !important;
   color: #24292f !important;
 }
+
+/* 修复编辑器内容区高度，使 textarea 填满整个左侧编辑面板 */
+.w-md-editor-content {
+  flex: 1 !important;
+  min-height: 0 !important;
+  height: auto !important;
+}
+
+.w-md-editor-input {
+  height: 100% !important;
+}
+
+.w-md-editor-area {
+  height: 100% !important;
+}
+
+.w-md-editor-text {
+  height: 100% !important;
+  min-height: 100% !important;
+}
