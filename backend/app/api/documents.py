@@ -4,7 +4,8 @@ from sqlalchemy import select
 import uuid
 import os
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from app.models.database import get_db, Document
 from app.core.config import get_settings
@@ -50,7 +51,7 @@ async def save_document_content(
     line_count = len(request.content.split('\n'))
     doc.line_count = line_count
     doc.status = "processing"
-    doc.updated_at = datetime.now(timezone.utc)
+    doc.updated_at = datetime.now(ZoneInfo("Asia/Shanghai"))
     await db.commit()
 
     # 触发重新索引
@@ -58,10 +59,82 @@ async def save_document_content(
 
     return {
         "success": True,
-        "message": "文档已保存并重新索引",
+        "message": "Document saved and re-indexed",
         "line_count": line_count,
-        "status": "processing"
+        "status": "processing",
+        "updated_at": doc.updated_at.isoformat()
     }
+
+
+@router.put("/api/documents/{doc_id}/draft")
+async def save_document_draft(
+    doc_id: str,
+    request: SaveContentRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Save Markdown document draft without triggering re-index"""
+    result = await db.execute(select(Document).where(Document.id == doc_id))
+    doc = result.scalar_one_or_none()
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if doc.doc_type != "md":
+        raise HTTPException(status_code=400, detail="Only Markdown documents can be edited")
+
+    # Save file (path traversal protection)
+    upload_dir = os.path.abspath(settings.UPLOAD_DIR)
+    file_path = os.path.join(upload_dir, doc.filename)
+    if not file_path.startswith(upload_dir + os.sep) and file_path != upload_dir:
+        raise HTTPException(status_code=400, detail="Invalid file path")
+
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(request.content)
+    except OSError as e:
+        logger.error("File write failed: %s", e)
+        raise HTTPException(status_code=500, detail="File save failed")
+
+    # Update DB only, no re-index
+    line_count = len(request.content.split('\n'))
+    doc.line_count = line_count
+    doc.updated_at = datetime.now(ZoneInfo("Asia/Shanghai"))
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": "Draft saved (not indexed)",
+        "line_count": line_count,
+        "status": doc.status,
+        "updated_at": doc.updated_at.isoformat()
+    }
+
+
+@router.get("/api/documents/{doc_id}/raw")
+async def get_document_raw(
+    doc_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get raw file content directly from disk (for editing)."""
+    result = await db.execute(select(Document).where(Document.id == doc_id))
+    doc = result.scalar_one_or_none()
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Read raw file from disk
+    upload_dir = os.path.abspath(settings.UPLOAD_DIR)
+    file_path = os.path.join(upload_dir, doc.filename)
+    if not file_path.startswith(upload_dir + os.sep) and file_path != upload_dir:
+        raise HTTPException(status_code=400, detail="Invalid file path")
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except OSError as e:
+        logger.error("File read failed: %s", e)
+        raise HTTPException(status_code=500, detail="File read failed")
+
+    return {"content": content, "filename": doc.filename, "doc_type": doc.doc_type}
 
 
 @router.post("/api/documents/create-md", response_model=DocumentResponse)
