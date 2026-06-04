@@ -279,7 +279,10 @@ async def list_documents(folder_id: Optional[str] = None, db: AsyncSession = Dep
             status=doc.status,
             doc_description=doc.doc_description,
             page_count=doc.page_count,
+            line_count=doc.line_count,
             created_at=doc.created_at,
+            updated_at=doc.updated_at,
+            indexed_at=doc.indexed_at,
             folder_id=doc.folder_id,
         )
         for doc in documents
@@ -308,6 +311,7 @@ async def get_document(doc_id: str, db: AsyncSession = Depends(get_db)):
         error_message=doc.error_message,
         created_at=doc.created_at,
         updated_at=doc.updated_at,
+        indexed_at=doc.indexed_at,
         folder_id=doc.folder_id,
     )
 
