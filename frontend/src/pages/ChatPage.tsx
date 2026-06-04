@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Button, Typography, TreeSelect, Tooltip, App, Dropdown } from 'antd'
 import {
   SendOutlined,
@@ -128,7 +128,7 @@ const SessionItem: React.FC<{
   onSelect: () => void
   onDelete: () => void
   onRename: (newTitle: string) => void
-}> = ({ session, isActive, onSelect, onDelete, onRename }) => {
+}> = React.memo(({ session, isActive, onSelect, onDelete, onRename }) => {
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState(session.title)
   const [showActions, setShowActions] = useState(false)
@@ -256,6 +256,16 @@ const SessionItem: React.FC<{
       )}
     </div>
   )
+})
+
+// 预处理 markdown 内容：确保 $$ 块级公式被 remark-math 正确识别为 flow math
+// 提取到模块级，避免每次渲染重新创建
+const preprocessMarkdown = (content: string): string => {
+  // 将同行的 $$ formula $$ 转为 flow math 格式（$$ 独占一行）
+  // remark-math v6 中，$$ formula $$ 在同一行会被视为 mathText（行内），而非 math（块级）
+  return content.replace(/\$\$\s*([\s\S]+?)\s*\$\$/g, (_match, formula) => {
+    return `\n\n$$\n${formula.trim()}\n$$\n\n`
+  })
 }
 
 // Message bubble component - Deepseek style
@@ -263,26 +273,17 @@ interface MessageBubbleProps {
   msg: Message
   onCitationClick?: (citations: Array<{ page: number; text: string; node_title?: string; document_id?: string }>, index: number) => void
   isSelected?: boolean
-  onToggleSelect?: () => void
+  onToggleSelect?: (msgId: string) => void
   selectedDoc?: string | null
 }
 
-const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isSelected, onToggleSelect, selectedDoc }) => {
+const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ msg, onCitationClick, isSelected, onToggleSelect, selectedDoc }) => {
   const { message } = App.useApp()
   const isUser = msg.role === 'user'
   const [copied, setCopied] = useState(false)
 
-
-  // 预处理 markdown 内容：确保 $$ 块级公式被 remark-math 正确识别为 flow math
-  const preprocessMarkdown = (content: string): string => {
-    let result = content
-    // 将同行的 $$ formula $$ 转为 flow math 格式（$$ 独占一行）
-    // remark-math v6 中，$$ formula $$ 在同一行会被视为 mathText（行内），而非 math（块级）
-    result = result.replace(/\$\$\s*([\s\S]+?)\s*\$\$/g, (_match, formula) => {
-      return `\n\n$$\n${formula.trim()}\n$$\n\n`
-    })
-    return result
-  }
+  // 缓存 Markdown 预处理结果，避免每次渲染执行全局正则
+  const processedContent = useMemo(() => preprocessMarkdown(msg.content), [msg.content])
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(msg.content)
@@ -308,7 +309,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
         <div
           onClick={(e) => {
             e.stopPropagation()
-            onToggleSelect()
+            onToggleSelect(msg.id)
           }}
           style={{
             width: 20,
@@ -691,7 +692,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
                   },
                 }}
               >
-                {preprocessMarkdown(msg.content)}
+                {processedContent}
               </ReactMarkdown>
             </div>
           )}
@@ -742,7 +743,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, onCitationClick, isS
 
     </div>
   )
-}
+})
 
 const ChatPage = () => {
   const { message } = App.useApp()
@@ -1035,24 +1036,44 @@ const ChatPage = () => {
     }
     setMessages(prev => [...prev, aiMsg])
 
+    // 流式输出批量优化：用 RAF 合并同一帧内的多个 token，减少状态更新次数
+    let pendingContent = ''
+    let rafScheduled = false
+
+    const flushStreamContent = () => {
+      if (!pendingContent) return
+      const chunk = pendingContent
+      pendingContent = ''
+      rafScheduled = false
+      setMessages(prev => prev.map(msg =>
+        msg.id === aiMsgId
+          ? { ...msg, content: msg.content + chunk }
+          : msg
+      ))
+    }
+
     try {
       await chatApi.sendMessageStream(
         currentSession,
         inputMessage,
-        // onDelta: 收到文本增量
+        // onDelta: 收到文本增量，用 RAF 批量提交
         (text) => {
-          setMessages(prev => prev.map(msg => 
-            msg.id === aiMsgId 
-              ? { ...msg, content: msg.content + text }
-              : msg
-          ))
+          pendingContent += text
+          if (!rafScheduled) {
+            rafScheduled = true
+            requestAnimationFrame(flushStreamContent)
+          }
         },
         // onToolCall: 工具调用
         (tool) => {
           console.log('Tool call:', tool)
         },
-        // onDone: 完成 — 将格式化的 citations 设置到消息中，如果提供 full_text 则用它替换累积的文本
+        // onDone: 完成 — 先 flush 剩余待处理文本，再设置 citations
         (citations, fullText) => {
+          // flush 最后一个 RAF 帧中可能剩余的文本
+          if (pendingContent) {
+            flushStreamContent()
+          }
           setMessages(prev => prev.map(msg => 
             msg.id === aiMsgId 
               ? { 
@@ -1184,12 +1205,12 @@ const ChatPage = () => {
     }
   }
 
-  const handleCitationClick = (citations: Array<{ page: number; text: string; node_title?: string }>, index: number) => {
+  const handleCitationClick = useCallback((citations: Array<{ page: number; text: string; node_title?: string }>, index: number) => {
     setActiveCitations(citations)
     setSelectedCitationIndex(index)
     setShowReferencePanel(true)
     setShowPdfOnly(false)
-  }
+  }, [])
 
   const handleCloseReferencePanel = () => {
     setShowReferencePanel(false)
@@ -1245,7 +1266,7 @@ const ChatPage = () => {
   }
 
   // 切换消息选中状态
-  const toggleMessageSelection = (msgId: string) => {
+  const toggleMessageSelection = useCallback((msgId: string) => {
     setSelectedMessages(prev => {
       const newSet = new Set(prev)
       if (newSet.has(msgId)) {
@@ -1255,7 +1276,7 @@ const ChatPage = () => {
       }
       return newSet
     })
-  }
+  }, [])
 
   // 导出聊天记录为 Markdown
   const exportChatToMarkdown = (onlySelected = false) => {
@@ -1722,7 +1743,7 @@ const ChatPage = () => {
                     animation: 'fadeIn 0.3s ease-out',
                   }}
                 >
-                  <MessageBubble msg={msg} onCitationClick={handleCitationClick} isSelected={selectedMessages.has(msg.id)} onToggleSelect={() => toggleMessageSelection(msg.id)} selectedDoc={selectedDoc} />
+                  <MessageBubble msg={msg} onCitationClick={handleCitationClick} isSelected={selectedMessages.has(msg.id)} onToggleSelect={toggleMessageSelection} selectedDoc={selectedDoc} />
                 </div>
               ))}
               {sending && (
