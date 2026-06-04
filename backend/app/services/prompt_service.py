@@ -121,12 +121,18 @@ async def get_active_prompt(category: str) -> str:
         result = await db.execute(
             select(PromptConfig)
             .where(PromptConfig.category == category, PromptConfig.is_active == True)
+            .order_by(PromptConfig.version.desc())
         )
-        row = result.scalar_one_or_none()
-        if row:
-            _cache[category] = row.content
-            return row.content
-    return ""
+        rows = result.scalars().all()
+        if not rows:
+            return ""
+        # 如果有多条 active 记录（异常情况），只保留最新一条，其余去激活
+        if len(rows) > 1:
+            for row in rows[1:]:
+                row.is_active = False
+            await db.commit()
+        _cache[category] = rows[0].content
+        return rows[0].content
 
 
 async def get_all_active_prompts() -> dict[str, str]:
@@ -232,12 +238,17 @@ async def init_default_prompts():
             for cat, info in DEFAULT_PROMPTS.items():
                 default_content = info["content"]
                 
-                # Check current active prompt for this category
+                # Check current active prompts for this category
                 result = await db.execute(
                     select(PromptConfig)
                     .where(PromptConfig.category == cat, PromptConfig.is_active == True)
+                    .order_by(PromptConfig.version.desc())
                 )
-                active_prompt = result.scalar_one_or_none()
+                active_rows = result.scalars().all()
+                active_prompt = active_rows[0] if active_rows else None
+                # 如果有多条 active 记录（异常情况），全部去激活，后续会创建新版本
+                for row in active_rows[1:]:
+                    row.is_active = False
                 
                 # If no active prompt, or content is different, create new version
                 if not active_prompt or active_prompt.content != default_content:
