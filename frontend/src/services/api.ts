@@ -102,6 +102,12 @@ export const documentApi = {
     return response.data
   },
 
+  // Get raw file content directly from disk
+  getRaw: async (id: string): Promise<{ content: string; filename: string; doc_type: string }> => {
+    const response = await api.get(`/documents/${id}/raw`)
+    return response.data
+  },
+
   // Get original page content
   getPageContent: async (id: string, pageNum: number): Promise<{ page: number; content: string; doc_type?: string }> => {
     const response = await api.get(`/documents/${id}/page/${pageNum}`)
@@ -128,8 +134,14 @@ export const documentApi = {
   },
 
   // Save Markdown document content
-  saveContent: async (docId: string, content: string): Promise<{ success: boolean; message: string; line_count: number; status: string }> => {
+  saveContent: async (docId: string, content: string): Promise<{ success: boolean; message: string; line_count: number; status: string; updated_at: string }> => {
     const response = await api.put(`/documents/${docId}/content`, { content })
+    return response.data
+  },
+
+  // Save Markdown document draft (no re-index)
+  saveDraft: async (docId: string, content: string): Promise<{ success: boolean; message: string; line_count: number; status: string; updated_at: string }> => {
+    const response = await api.put(`/documents/${docId}/draft`, { content })
     return response.data
   },
 
