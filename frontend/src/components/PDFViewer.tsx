@@ -188,7 +188,7 @@ export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
           border: '1px solid #e5e7eb',
           borderTop: 'none',
           borderRadius: '0 0 8px 8px',
-          background: '#f3f4f6',
+          background: '#fff',
           position: 'relative',
         }}
       >
