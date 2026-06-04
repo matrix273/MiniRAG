@@ -67,7 +67,7 @@ function DocxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
             if (section.querySelector(':scope > .page-number')) return
             const pageNum = document.createElement('div')
             pageNum.className = 'page-number'
-            pageNum.textContent = `第 ${index + 1} / ${docxSections.length} 页`
+            pageNum.textContent = `${index + 1} / ${docxSections.length}`
             section.appendChild(pageNum)
           })
         }
