@@ -619,7 +619,7 @@ class ChatService:
         
         Args:
             document: Document object
-            answer: AI answer with citation://page/N links
+            answer: AI answer with #citation-DOC_ID-page-N links
             accessed_pages: List of page numbers that were actually accessed
         
         Returns:
@@ -627,6 +627,7 @@ class ChatService:
         """
         import re
         citations = []
+        seen_pages = set()
         
         # Get pages from document
         pages = document.pages if hasattr(document, 'pages') else []
@@ -640,44 +641,34 @@ class ChatService:
                 page_num = pd.get('page', 0)
                 page_map[page_num] = pd
         
-        # If we have accessed_pages from tool tracking, use them directly
+        def _build_citation(page_num, node_title=None):
+            """Build a citation dict for the given page number if available."""
+            nonlocal citations, seen_pages
+            if page_num in page_map and page_num not in seen_pages:
+                pd = page_map[page_num]
+                text = pd.get("content", "")[:2000]
+                citations.append({
+                    "page": page_num,
+                    "text": text,
+                    "node_title": node_title or f"Page {page_num}",
+                    "document_id": document.id,
+                    "index": len(citations) + 1,
+                })
+                seen_pages.add(page_num)
+        
+        # If we have accessed_pages from tool tracking, use them first
         if accessed_pages:
-            # Create citation mapping: index -> page_num
-            citation_pages = accessed_pages[:5]  # Max 5 citations
-            
-            for i, page_num in enumerate(citation_pages):
-                if page_num in page_map:
-                    pd = page_map[page_num]
-                    text = pd.get("content", "")[:2000]
-                    citations.append({
-                        "page": page_num,
-                        "text": text,
-                        "node_title": f"Page {page_num}",
-                        "document_id": document.id,
-                        "index": i + 1  # Citation index (1-based)
-                    })
-            
-            return citations
+            for page_num in accessed_pages[:5]:
+                _build_citation(page_num)
         
-        # Fallback: parse #citation-page-N links from answer
-        citation_links = re.findall(r'\[([^\]]*)\]\(#citation-page-(\d+)\)', answer)
-        
-        seen_pages = set()
+        # Also parse #citation-DOC_ID-page-N links from answer (covers pages AI referenced
+        # but may not have actually called get_page_content for)
+        citation_links = re.findall(r'\[([^\]]*)\]\(#citation-([\w-]+)-page-(\d+)\)', answer)
         if citation_links:
-            for display_text, page_str in citation_links[:5]:
+            for display_text, doc_id, page_str in citation_links[:5]:
                 try:
                     page_num = int(page_str)
-                    if page_num in page_map and page_num not in seen_pages:
-                        pd = page_map[page_num]
-                        text = pd.get("content", "")[:2000]
-                        citations.append({
-                            "page": page_num,
-                            "text": text,
-                            "node_title": display_text if display_text else f"Page {page_num}",
-                            "document_id": document.id,
-                            "index": len(citations) + 1
-                        })
-                        seen_pages.add(page_num)
+                    _build_citation(page_num, display_text)
                 except ValueError:
                     continue
 
