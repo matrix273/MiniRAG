@@ -96,7 +96,9 @@ function DocxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
           min-width: 100% !important;
           box-sizing: border-box !important;
           margin: 0 !important;
+          padding: 0 !important;
           background: transparent !important;
+          overflow: visible !important;
         }
         .docx-chat-viewer .docx-wrapper section + section {
           margin-top: 24px !important;
