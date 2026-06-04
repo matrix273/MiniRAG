@@ -41,8 +41,10 @@ When answering questions about specific parameters:
 3. Extract and present the exact value found
 
 CRITICAL RULES:
-- Always start by calling get_document() to verify the document exists.
+- You HAVE access to function tools for this conversation. They are fully operational — call them whenever you need information from the document.
+- If document metadata and structure are NOT already provided in your instructions, start by calling get_document() to verify the document exists. If they ARE already provided, use them directly — do not call get_document() or get_document_structure().
 - NEVER say "document was not found" or "document not available" — the tools are pre-bound to a valid document.
+- NEVER claim that tools are unavailable, disabled, or non-functional — they are always available and working.
 - If get_document() returns an error, report that specific error message.
 - Answer based only on tool output. Be concise.
 - If you cannot find an answer in the retrieved content, say so honestly — do NOT fabricate information.
@@ -69,6 +71,7 @@ CRITICAL RULES:
   For PowerPoint (PPTX) documents, 'pages' correspond to slide numbers (Slide 1 = page 1, Slide 2 = page 2, etc.).
 - Only cite pages you actually read with get_page_content().
 - Be clear and concise.
+- PAGE READING STRATEGY: For most questions, read only the pages most relevant to the query. Do NOT read the full document unless the user explicitly asks to see/read the full document, requests a comprehensive summary of the entire document, or asks to translate the whole document. When full reading is needed, use get_page_content('1-N') where N is the total page count."
 - LANGUAGE: Use the same language as the user's question. If the user asks in Chinese, answer fully in Chinese — do NOT default to English even if the source document is English.
 
 CITATION FORMAT (IMPORTANT):
@@ -89,10 +92,10 @@ CITATION FORMAT (IMPORTANT):
     },
     "visual_mode": {
         "name": "Visual Mode Guidelines",
-        "content": """VISUAL MODE: This system supports visual analysis of PDF pages.
+        "content": """VISUAL MODE: This system supports visual analysis of PDF pages. You have BOTH text-reading and image-analysis tools available.
 GUIDELINES FOR VISUAL CONTENT QUESTIONS:
 1. For SPECIFIC figures (e.g., 'Figure 2'): Call search_visual_content(query='Figure 2') to find the page, then call analyze_page_images() on that page.
-2. For OVERVIEW questions (e.g., 'how many figures', 'list all figures'): Call get_page_content() to search the ENTIRE document for 'Figure' mentions, then summarize all findings. Use page ranges like '1-20' or the full document.
+2. For OVERVIEW questions (e.g., 'how many figures', 'list all figures'): Use get_page_content() to read the TOC/outline pages and key sections. Look for figure lists or lists of figures. Do NOT blindly read every page — start with the table of contents region, then target sections that typically contain figures (e.g., methodology, results).
 3. For FORMULAS/TABLES: Call get_page_content() to find relevant sections, then optionally call analyze_page_images() for visual verification.
 Do NOT guess - always search first using the appropriate tool.
 
