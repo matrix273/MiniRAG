@@ -773,7 +773,6 @@ const ChatPage = () => {
   })
   const [chatWidth, setChatWidth] = useState(50) // percentage
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const sessionSwitchRef = useRef(false) // 标记正在进行会话切换，跳过 useEffect 中的 handleSelectDocs
   // PDF preview panel state
   const [pdfPage, setPdfPage] = useState(1)
   const [pdfPreviewDocId, setPdfPreviewDocId] = useState<string | null>(null)
@@ -806,18 +805,8 @@ const ChatPage = () => {
     loadAllSessions()
   }, [])
 
-  // 选择的知识库变化时，加载对应的会话列表
-  // 注意：selectedDocs 被置空时（清除按钮已显式调用 loadAllSessions），不再自动加载
-  // 标记 sessionSwitchRef 为 true 时跳过（由 handleSelectSession 设置，避免触发 handleSelectDocs）
-  useEffect(() => {
-    if (sessionSwitchRef.current) {
-      sessionSwitchRef.current = false
-      return
-    }
-    if (selectedDocs.length > 0) {
-      handleSelectDocs(selectedDocs)
-    }
-  }, [selectedDocs])
+  // 注意：文档选择变化时，由 TreeSelect onChange 显式调用 handleSelectDocs
+  // 不再通过 useEffect 自动触发，避免 handleSelectSession 恢复会话时误过滤会话列表
 
   // 键盘快捷键：q 折叠/展开聊天记录侧边栏
   useEffect(() => {
@@ -1115,27 +1104,27 @@ const ChatPage = () => {
     }
   }, [currentSession])
 
-  const loadAllSessions = async () => {
+  const loadAllSessions = async (restore = true) => {
     try {
       const allSessions = await chatApi.listAllSessions()
       setSessions(allSessions)
       setMessages([])
-      // 尝试恢复上次激活的会话
-      const savedSessionId = localStorage.getItem('chatCurrentSession')
-      if (savedSessionId && allSessions.some(s => s.id === savedSessionId)) {
-        setCurrentSession(savedSessionId)
-        const msgs = await chatApi.getMessages(savedSessionId)
-        setMessages(msgs as Message[])
-      } else {
-        setCurrentSession(null)
+      if (restore) {
+        // 尝试恢复上次激活的会话——模拟点击会话
+        const savedSessionId = localStorage.getItem('chatCurrentSession')
+        const savedSession = allSessions.find(s => s.id === savedSessionId)
+        if (savedSession) {
+          await handleSelectSession(savedSession.id, savedSession)
+          return
+        }
       }
+      setCurrentSession(null)
     } catch {
       message.error('Failed to load sessions')
     }
   }
 
-  const handleSelectSession = async (sessionId: string) => {
-    sessionSwitchRef.current = true
+  const handleSelectSession = async (sessionId: string, sessionOverride?: ChatSession) => {
     setCurrentSession(sessionId)
 
     // 加载会话消息
@@ -1143,7 +1132,7 @@ const ChatPage = () => {
     setMessages(msgs as Message[])
 
     // 查找会话关联的文档
-    const session = sessions.find(s => s.id === sessionId)
+    const session = sessionOverride || sessions.find(s => s.id === sessionId)
     if (session) {
       const docIds = session.document_ids || (session.document_id ? [session.document_id] : [])
       if (docIds.length > 0) {
@@ -1172,7 +1161,7 @@ const ChatPage = () => {
       // 清空选择时，加载全量历史会话
       setSelectedDoc(null)
       setSelectedDocs([])
-      await loadAllSessions()
+      await loadAllSessions(false)
       return
     }
 
@@ -1453,7 +1442,7 @@ const ChatPage = () => {
                 onClick={async () => {
                   setSelectedDoc(null)
                   setSelectedDocs([])
-                  await loadAllSessions()
+                  await loadAllSessions(false)
                 }}
                 style={{
                   fontSize: 11,
@@ -1490,10 +1479,9 @@ const ChatPage = () => {
                 // TreeSelect 自带的 X/tag 关闭等操作清空时，同步重置 selectedDoc 并刷新全量会话
                 setSelectedDoc(null)
                 setSelectedDocs([])
-                await loadAllSessions()
+                await loadAllSessions(false)
               } else {
-                setSelectedDoc(docIds[0])
-                setSelectedDocs(docIds)
+                await handleSelectDocs(docIds)
               }
             }}
             treeCheckable
