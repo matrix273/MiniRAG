@@ -26,6 +26,7 @@ engine = create_async_engine(
     hide_parameters=True,
     pool_pre_ping=True,      # 连接健康检查，自动丢弃断开的连接
     pool_recycle=1800,       # 30 分钟回收连接，避免 PostgreSQL idle timeout
+    connect_args={"server_settings": {"timezone": "Asia/Shanghai"}},
 )
 
 # Set SQLAlchemy log level to WARNING to reduce noise
@@ -54,6 +55,7 @@ class Document(Base):
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+    indexed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     folder_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("folders.id", ondelete="SET NULL"), nullable=True)
 
     # Relationships
@@ -146,6 +148,13 @@ async def init_db():
         try:
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
+                # Migrations for existing databases
+                from sqlalchemy import text
+                await conn.execute(text(
+                    "ALTER TABLE documents ADD COLUMN IF NOT EXISTS indexed_at TIMESTAMPTZ"
+                ))
+                # Set session timezone for this connection
+                await conn.execute(text("SET timezone = 'Asia/Shanghai'"))
             logger.info("Database initialized successfully")
             return
         except Exception as e:
