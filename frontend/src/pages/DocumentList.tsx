@@ -490,10 +490,10 @@ const DocumentList = () => {
       ),
     },
     {
-      title: 'Type',
-      dataIndex: 'doc_type',
-      key: 'doc_type',
-      render: (type: string) => type.toUpperCase(),
+      title: 'Updated',
+      key: 'updated_at',
+      render: (_: unknown, record: Document) =>
+        dayjs(record.indexed_at || record.updated_at || record.created_at).format('YYYY-MM-DD HH:mm'),
     },
     {
       title: 'Status',
