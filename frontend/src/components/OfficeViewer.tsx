@@ -16,20 +16,13 @@ function extractDocId(fileUrl: string): string | undefined {
 }
 
 function DocxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
-  const contentRef = useRef<HTMLDivElement>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
-  const [scale, setScale] = useState(1)
-  const [baseWidth, setBaseWidth] = useState(0)
-  const [contentHeight, setContentHeight] = useState(0)
   const resolvedDocId = docId || extractDocId(fileUrl)
-  const baseWidthRef = useRef(0) // 用于 ResizeObserver 回调，避免闭包过期
 
-  // 只渲染一次 + CSS scale 缩放，不重建 DOM，不重置滚动位置
   useEffect(() => {
-    if (!contentRef.current) return
+    if (!containerRef.current) return
     let cancelled = false
-    let resizeTimer: ReturnType<typeof setTimeout> | null = null
 
     const render = async () => {
       setLoading(true)
@@ -42,35 +35,31 @@ function DocxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
           const response = await fetch(fileUrl)
           blob = await response.blob()
         }
-        if (!cancelled && contentRef.current) {
-          contentRef.current.innerHTML = ''
-          await renderAsync(blob, contentRef.current, undefined, {
-            debug: false,
-            inWrapper: true,
+        if (!cancelled && containerRef.current) {
+          containerRef.current.innerHTML = ''
+          // 选项与 docx-preview-test.html 完全一致
+          await renderAsync(blob, containerRef.current, null, {
+            ignoreHeight: true,
+            ignoreWidth: true,
+            ignoreFonts: false,
             breakPages: true,
+            debug: false,
+            experimentalMode: true,
+            inWrapper: true,
+            trimXmlDeclaration: true,
             ignoreLastRenderedPageBreak: false,
+            renderHeaders: true,
+            renderFooters: true,
+            renderFootnotes: true,
+            renderEndnotes: true,
+            useBase64URL: false,
+            renderChanges: false,
+            renderComments: false,
+            renderAltChunks: true,
           })
-          // 覆盖 docx-preview 默认样式（padding/gap/居中导致左右灰边和对齐偏移）
-          const wrapperEl = contentRef.current.firstElementChild as HTMLElement
-          if (wrapperEl) {
-            // 使用 requestAnimationFrame 确保 CSS 样式已应用，浏览器布局已完成
-            requestAnimationFrame(() => {
-              if (cancelled) return
-              // 测量实际渲染内容的尺寸（在样式修正后）
-              const w = wrapperEl.scrollWidth
-              const h = wrapperEl.scrollHeight
-              baseWidthRef.current = w > 0 ? w : 800
-              setBaseWidth(baseWidthRef.current)
-              setContentHeight(h || 0)
-              // 渲染完成后立即计算缩放比（ResizeObserver 可能已在渲染前触发过）
-              if (scrollRef.current && baseWidthRef.current > 0) {
-                const cw = scrollRef.current.clientWidth
-                setScale(cw / baseWidthRef.current)
-              }
-            })
-          }
         }
       } catch (err) {
+        console.error('DOCX rendering error:', err)
         if (!cancelled) message.error('Failed to render DOCX')
       } finally {
         if (!cancelled) setLoading(false)
@@ -78,47 +67,41 @@ function DocxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
     }
 
     render()
-
-    // ResizeObserver — 容器宽度变化时只更新 scale，不重建 DOM
-    const observer = new ResizeObserver((entries) => {
-      if (cancelled) return
-      const cw = entries[0]?.contentRect?.width
-      if (!cw || cw <= 0) return
-      if (resizeTimer) clearTimeout(resizeTimer)
-      resizeTimer = setTimeout(() => {
-        if (!cancelled && baseWidthRef.current > 0) {
-          setScale(cw / baseWidthRef.current)
-        }
-      }, 100)
-    })
-
-    if (scrollRef.current) {
-      observer.observe(scrollRef.current)
-    }
-
-    return () => {
-      cancelled = true
-      if (resizeTimer) clearTimeout(resizeTimer)
-      observer.disconnect()
-    }
+    return () => { cancelled = true }
   }, [fileUrl, resolvedDocId])
 
-  // 不能用 Ant Design Spin，它会插入额外 DOM 层破坏 flex 高度链
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
       <style>{`
-        .docx-scroll-container .docx-wrapper {
-          padding: 0 !important;
-          gap: 0 !important;
+        .docx-chat-viewer {
+          width: 100%;
+          max-width: 900px;
+          margin: 0 auto;
+          min-height: 400px;
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          padding: 24px;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+          overflow: auto;
+        }
+        .docx-chat-viewer .docx-wrapper {
+          background: transparent !important;
+          width: 100% !important;
+          max-width: 100% !important;
+        }
+        .docx-chat-viewer .docx-wrapper section {
+          width: 100% !important;
+          max-width: 100% !important;
+          min-width: 100% !important;
+          box-sizing: border-box !important;
           margin: 0 !important;
           background: transparent !important;
-          justify-content: flex-start !important;
-          border: none !important;
         }
-        .docx-scroll-container .docx-wrapper > div {
-          padding: 0 !important;
-          gap: 0 !important;
-          margin: 0 !important;
+        .docx-chat-viewer .docx-wrapper section + section {
+          margin-top: 24px !important;
+          padding-top: 12px !important;
+          border-top: 2px dashed #e5e7eb !important;
         }
       `}</style>
       {loading && (
@@ -130,28 +113,11 @@ function DocxViewer({ fileUrl, docId }: { fileUrl: string; docId?: string }) {
           <Spin tip="Loading..." fullscreen />
         </div>
       )}
-      <div ref={scrollRef} className="docx-scroll-container" style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        {/* 外层锚定 div：给 scroll 容器提供正确的缩放后尺寸 */}
-        <div
-          style={{
-            width: baseWidth > 0 ? `${baseWidth * scale}px` : '100%',
-            minHeight: baseWidth > 0 && contentHeight > 0 ? `${contentHeight * scale}px` : '100%',
-            position: 'relative',
-          }}
-        >
-          {/* contentRef 始终为同一个 DOM 节点，不因条件渲染而替换 */}
-          <div
-            ref={contentRef}
-            style={{
-              transform: baseWidth > 0 ? `scale(${scale})` : undefined,
-              transformOrigin: 'top left',
-              position: baseWidth > 0 ? 'absolute' : 'relative',
-              top: 0,
-              left: 0,
-            }}
-          />
-        </div>
-      </div>
+      <div
+        ref={containerRef}
+        className="docx-chat-viewer"
+        style={{ flex: 1, minHeight: 0 }}
+      />
     </div>
   )
 }
