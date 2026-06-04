@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Button, Space, Typography, message, Spin, Tooltip } from 'antd'
-import { ArrowLeftOutlined, SaveOutlined, FileTextOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { Card, Button, Space, Typography, message, Spin, Tooltip, Tag } from 'antd'
+import { ArrowLeftOutlined, SaveOutlined, FileTextOutlined, BulbOutlined, BulbFilled, EditOutlined, CheckCircleOutlined, ExclamationCircleOutlined, SyncOutlined } from '@ant-design/icons'
 import MDEditor from '@uiw/react-md-editor'
 import '@uiw/react-md-editor/markdown-editor.css'
 import { documentApi } from '@/services/api'
@@ -9,19 +9,25 @@ import type { Document } from '@/types'
 
 const { Title } = Typography
 
+/** 文档保存/索引状态 */
+type SaveStatus = 'indexed' | 'indexing' | 'draft'
+
 const DocumentEdit: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const [document, setDocument] = useState<Document | null>(null)
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [lastSaved, setLastSaved] = useState<Date | null>(null)
+  const [draftSaving, setDraftSaving] = useState(false)
+  const [savedStatus, setSavedStatus] = useState<SaveStatus | null>(null)
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null)
   const [isDark, setIsDark] = useState(false)
 
   useEffect(() => {
     loadDocument()
-  }, [id])
+  }, [id, location.key])
 
   const loadDocument = async () => {
     if (!id) return
@@ -31,13 +37,24 @@ const DocumentEdit: React.FC = () => {
       const doc = await documentApi.get(id)
       setDocument(doc)
 
-      // 获取文档内容
-      if (doc.line_count) {
+      // Load raw file content directly from disk (reflects drafts)
+      if (doc.doc_type === 'md') {
+        const rawData = await documentApi.getRaw(id)
+        setContent(rawData.content)
+      } else if (doc.line_count) {
         const contentData = await documentApi.getContent(id, 1, doc.line_count)
         setContent(contentData.content)
       }
 
-      setLastSaved(new Date())
+      // 根据服务器数据判断索引状态
+      setLastUpdatedAt(doc.updated_at || doc.created_at)
+      if (doc.status === 'completed') {
+        setSavedStatus('indexed')
+      } else if (doc.status === 'processing') {
+        setSavedStatus('indexing')
+      } else {
+        setSavedStatus('draft')
+      }
     } catch (error) {
       message.error('Failed to load document')
       navigate('/documents')
@@ -53,7 +70,10 @@ const DocumentEdit: React.FC = () => {
       setSaving(true)
       const result = await documentApi.saveContent(id, content)
       message.success(result.message)
-      setLastSaved(new Date())
+      setLastUpdatedAt(result.updated_at)
+      setSavedStatus('indexing')
+      // 更新 document status 为 processing
+      setDocument(prev => prev ? { ...prev, status: 'processing' } : null)
     } catch (error) {
       message.error('Failed to save, please try again')
     } finally {
@@ -61,18 +81,38 @@ const DocumentEdit: React.FC = () => {
     }
   }, [id, content])
 
-  // 快捷键保存 (Ctrl+S)
+  const handleSaveDraft = useCallback(async () => {
+    if (!id) return
+
+    try {
+      setDraftSaving(true)
+      const result = await documentApi.saveDraft(id, content)
+      message.success('Draft saved (not indexed)')
+      setLastUpdatedAt(result.updated_at)
+      setSavedStatus('draft')
+    } catch (error) {
+      message.error('Failed to save draft, please try again')
+    } finally {
+      setDraftSaving(false)
+    }
+  }, [id, content])
+
+  // 快捷键保存 (Ctrl+S 完整保存, Ctrl+D 暂存)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault()
         handleSave()
       }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+        e.preventDefault()
+        handleSaveDraft()
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleSave])
+  }, [handleSave, handleSaveDraft])
 
   if (loading) {
     return (
@@ -111,12 +151,20 @@ const DocumentEdit: React.FC = () => {
                 onClick={() => setIsDark(!isDark)}
               />
             </Tooltip>
-            {lastSaved && (
-              <span style={{ color: '#999', fontSize: 12 }}>
-                Last saved: {lastSaved.toLocaleTimeString()}
-              </span>
+            {/* 索引状态指示器 */}
+            {savedStatus && (
+              <SaveStatusBadge status={savedStatus} updatedAt={lastUpdatedAt} />
             )}
-            <Tooltip title="Ctrl+S">
+            <Tooltip title="Save draft without re-indexing. Index will be stale. (Ctrl+D)">
+              <Button
+                icon={<EditOutlined />}
+                onClick={handleSaveDraft}
+                loading={draftSaving}
+              >
+                Save Draft
+              </Button>
+            </Tooltip>
+            <Tooltip title="Save & re-index now (Ctrl+S)">
               <Button
                 type="primary"
                 icon={<SaveOutlined />}
@@ -150,11 +198,56 @@ const DocumentEdit: React.FC = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', color: '#666', fontSize: 12 }}>
           <span>Lines: {content.split('\n').length}</span>
           <span>Chars: {content.length}</span>
-          <span>Status: {saving ? 'Saving...' : 'Saved'}</span>
+          <span>
+            {draftSaving ? 'Saving draft...' : saving ? 'Saving & re-indexing...' : savedStatus === 'indexed' ? 'Indexed' : savedStatus === 'indexing' ? 'Indexing...' : savedStatus === 'draft' ? 'Draft (not indexed)' : 'Unsaved'}
+          </span>
         </div>
       </Card>
     </div>
   )
+}
+
+/** 格式化 ISO 时间为可读字符串 */
+function formatTime(isoStr: string | null): string {
+  if (!isoStr) return ''
+  const d = new Date(isoStr)
+  if (isNaN(d.getTime())) return isoStr
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+/** 索引状态徽标 */
+const SaveStatusBadge: React.FC<{ status: SaveStatus; updatedAt: string | null }> = ({ status, updatedAt }) => {
+  const timeStr = formatTime(updatedAt)
+
+  switch (status) {
+    case 'indexed':
+      return (
+        <Tooltip title={`Indexed and searchable. Updated: ${timeStr}`}>
+          <Tag icon={<CheckCircleOutlined />} color="success" style={{ marginRight: 0 }}>
+            Indexed {timeStr}
+          </Tag>
+        </Tooltip>
+      )
+    case 'indexing':
+      return (
+        <Tooltip title={`Re-indexing in progress... Updated: ${timeStr}`}>
+          <Tag icon={<SyncOutlined spin />} color="processing" style={{ marginRight: 0 }}>
+            Indexing... {timeStr}
+          </Tag>
+        </Tooltip>
+      )
+    case 'draft':
+      return (
+        <Tooltip title={`Draft only — not indexed or index is stale. Use Save (Ctrl+S) to re-index. Updated: ${timeStr}`}>
+          <Tag icon={<ExclamationCircleOutlined />} color="warning" style={{ marginRight: 0 }}>
+            Draft {timeStr}
+          </Tag>
+        </Tooltip>
+      )
+    default:
+      return null
+  }
 }
 
 export default DocumentEdit
