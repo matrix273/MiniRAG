@@ -1,7 +1,8 @@
 """Security utilities for authentication and authorization."""
 import uuid
 import hashlib
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import bcrypt
 import jwt
@@ -26,7 +27,7 @@ def verify_password(password: str, hashed: str) -> bool:
 def create_access_token(user_id: str) -> str:
     """Create JWT access token with 15-minute expiry."""
     settings = get_settings()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(ZoneInfo("Asia/Shanghai"))
     expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES_JWT)
     payload = {
         "sub": user_id,
@@ -41,7 +42,7 @@ def create_refresh_token(user_id: str) -> tuple[str, str]:
     """Create JWT refresh token with 7-day expiry and jti.
     Returns (token, jti)."""
     settings = get_settings()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(ZoneInfo("Asia/Shanghai"))
     expire = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     jti = str(uuid.uuid4())
     payload = {
@@ -76,7 +77,7 @@ async def store_refresh_token(db: AsyncSession, user_id: str, token: str) -> Ref
     """Store refresh token in database."""
     settings = get_settings()
     token_hash = hash_token(token)
-    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    expires_at = datetime.now(ZoneInfo("Asia/Shanghai")) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
 
     refresh_token = RefreshToken(
         user_id=user_id,
