@@ -6,6 +6,7 @@ import concurrent.futures
 from pathlib import Path
 
 import PyPDF2
+import pymupdf
 
 from .pdf_indexer import page_index
 from .md_indexer import md_to_tree
@@ -79,11 +80,22 @@ class PageIndexClient:
                 if_add_doc_description='yes'
             )
             # Extract per-page text so queries don't need the original PDF
+            # Also detect embedded images on each page with PyMuPDF
             pages = []
             with open(file_path, 'rb') as f:
                 pdf_reader = PyPDF2.PdfReader(f)
                 for i, page in enumerate(pdf_reader.pages, 1):
-                    pages.append({'page': i, 'content': page.extract_text() or ''})
+                    pages.append({'page': i, 'content': page.extract_text() or '', 'image_count': 0})
+
+            # Detect embedded images per page using PyMuPDF
+            try:
+                mu_doc = pymupdf.open(file_path)
+                for i in range(len(mu_doc)):
+                    page_images = mu_doc[i].get_images()
+                    pages[i]['image_count'] = len(page_images)
+                mu_doc.close()
+            except Exception as e:
+                print(f"Warning: Could not detect embedded images with PyMuPDF: {e}")
 
             self.documents[doc_id] = {
                 'id': doc_id,
@@ -316,6 +328,13 @@ class PageIndexClient:
         if self.workspace:
             self._ensure_doc_loaded(doc_id)
         return get_page_content(self.documents, doc_id, pages)
+    
+    def get_page_images_info(self, doc_id: str) -> str:
+        """Return which pages have embedded images (metadata only, no image data)."""
+        if self.workspace:
+            self._ensure_doc_loaded(doc_id)
+        from .retrieval import get_page_images_info
+        return get_page_images_info(self.documents, doc_id)
     
     def get_page_images(self, doc_id: str, pages: str, output_dir: str = None, dpi: int = 150) -> list:
         """
