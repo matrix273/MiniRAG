@@ -752,16 +752,19 @@ async def send_message_stream(
                 if rag_template:
                     agent_prompt = f"{agent_prompt}\n\n{rag_template}"
 
+                # 检查是否为自动匹配场景
+                if session.is_auto:
+                    # 添加自动匹配模式指导
+                    auto_match_prompt = await get_active_prompt("auto_match")
+                    if auto_match_prompt:
+                        agent_prompt += f"\n\n{auto_match_prompt}"
+
                 # 将 {doc_id} 占位符替换为实际文档 ID
                 if documents:
                     if len(documents) == 1:
                         agent_prompt = agent_prompt.replace("{doc_id}", documents[0].id)
                     else:
-                        # 多文档时，提供每个文档的 ID 映射，让 AI 在引用时使用
-                        doc_id_map = "\n".join(f"  - {doc.original_name}: {doc.id}" for doc in documents)
-                        agent_prompt += f"\n\nDocument IDs for citation:\n{doc_id_map}\nWhen citing, use the corresponding document ID from the list above."
-                        # 移除占位符，AI 会从上方的 ID 列表中选择对应的文档 ID 填入
-                        agent_prompt = agent_prompt.replace("{doc_id}", "文档ID")
+                        agent_prompt = agent_prompt.replace("{doc_id}", "the appropriate document ID from the list below")
 
                 # 从数据库获取 LLM 配置
                 llm_config = await get_llm_config()
@@ -774,34 +777,24 @@ async def send_message_stream(
                     os.environ["OPENAI_BASE_URL"] = llm_config["api_base_url"]
 
                 if len(documents) == 1:
-                    # 单文档：使用 Agent 流式（支持 get_page_content 等工具）
+                    # 单文档：使用 Agent 流式（支持工具调用）
                     document = documents[0]
 
-                    # 添加文档上下文信息
-                    agent_prompt += f"\n\nDocument: {document.original_name}"
+                    # 加载单文档模式工具指令
+                    single_doc_tools_prompt = await get_active_prompt("single_doc_tools")
+                    if single_doc_tools_prompt:
+                        agent_prompt += f"\n\n{single_doc_tools_prompt}"
+
+                    # 添加文档信息
+                    agent_prompt += f"\n\nCurrent Document:\n- Name: {document.original_name}"
                     if document.doc_description:
-                        agent_prompt += f"\nDescription: {document.doc_description}"
+                        agent_prompt += f"\n- Description: {document.doc_description}"
                     if document.page_count:
-                        agent_prompt += f"\nPages: {document.page_count}"
-                    
-                    # 注入预计算的结构摘要
+                        agent_prompt += f"\n- Pages: {document.page_count}"
+
+                    # 注入结构摘要
                     if document.structure_summary:
                         agent_prompt += f"\n\nDocument Structure:\n{document.structure_summary}"
-                        tool_list = (
-                            "1. get_page_content(pages) - to read text content of specific pages. "
-                            "Use ranges like '5-7', '3,8', or '12'. "
-                            "By default, ONLY read pages relevant to the user's question — do NOT read unnecessary pages. "
-                            f"Read the FULL document (get_page_content('1-{document.page_count}')) only when the user "
-                            "explicitly asks to see the full document, requests a comprehensive summary of the entire document, "
-                            "or asks to translate the whole document."
-                        )
-                        if llm_config["vision_enabled"]:
-                            tool_list += "\n2. analyze_page_images(pages) - to analyze visual content (charts, diagrams, formulas) on pages"
-                        agent_prompt += (
-                            "\n\nIMPORTANT: Document metadata and structure are already provided above. "
-                            f"You have access to the following tools (call them directly — they are fully functional):\n{tool_list}\n"
-                            "Use the listed tools above. The get_document() and get_document_structure() tools are intentionally omitted because the structure is already in your context."
-                        )
 
                     # 添加聊天历史
                     if chat_history:
@@ -837,22 +830,36 @@ async def send_message_stream(
                             citations = event.get("citations", [])
                             full_text = str(event.get("full_text", full_text))
                             formatted_citations_for_sse = None
-                            if citations and documents:
-                                document = documents[0]
-                                raw_cits = chat_service._extract_citations(
-                                    document, str(full_text), citations
-                                )
-                                formatted_citations_for_sse = [
-                                    {k: v for k, v in c.items() if k != 'index'}
-                                    for c in raw_cits
-                                ] if raw_cits else None
+                            try:
+                                if citations and documents:
+                                    document = documents[0]
+                                    raw_cits = chat_service._extract_citations(
+                                        document, str(full_text), citations
+                                    )
+                                    formatted_citations_for_sse = [
+                                        {k: v for k, v in c.items() if k != 'index'}
+                                        for c in raw_cits
+                                    ] if raw_cits else None
+                            except Exception:
+                                formatted_citations_for_sse = None
                             yield f"data: {json.dumps({'type': 'done', 'citations': formatted_citations_for_sse or [], 'full_text': full_text})}\n\n"
                         elif event["type"] == "error":
-                            full_text = f"Error: {event['message']}"
+                            # 保留已累积的文本，追加错误提示，避免 DB 中丢失已流式输出的内容
+                            full_text += f"\n\n---\n\n⚠️ Error: {event['message']}"
                             yield f"data: {json.dumps({'type': 'error', 'message': event['message']})}\n\n"
                 else:
-                    # 多文档：合并所有文档上下文，使用直接流式 LLM 调用
+                    # 多文档：使用 Agent SDK + 多文档工具
                     from app.services.document_service import _extract_structure_summary
+                    from app.services.agent_service import create_multi_doc_agent
+
+                    # 加载多文档模式指令
+                    multi_doc_note_prompt = await get_active_prompt("multi_doc_note")
+                    if multi_doc_note_prompt:
+                        agent_prompt += f"\n\n{multi_doc_note_prompt}"
+
+                    # 构建文档映射
+                    doc_id_map_str = "\n".join(f"  - {doc.original_name}: {doc.id}" for doc in documents)
+                    doc_names = {doc.id: doc.original_name for doc in documents}
 
                     doc_sections = []
                     for doc in documents:
@@ -868,16 +875,8 @@ async def send_message_stream(
 
                     agent_prompt += "\n\n=== Available Documents ===\n\n"
                     agent_prompt += "\n\n---\n\n".join(doc_sections)
-                    
-                    # 重要：多文档查询模式下，不要使用工具
-                    agent_prompt += (
-                        "\n\nIMPORTANT: This is a multi-document query mode. "
-                        "You do NOT have access to any tools (get_document, get_document_structure, get_page_content). "
-                        "The document structures are already provided above. "
-                        "Answer directly based on the provided document structures. "
-                        "Do NOT output tool calls or describe your analysis process. "
-                        "Provide the final answer directly."
-                    )
+
+                    agent_prompt += f"\n\nDocument IDs for citation:\n{doc_id_map_str}"
 
                     # 添加聊天历史
                     if chat_history:
@@ -887,107 +886,79 @@ async def send_message_stream(
                         )
                         agent_prompt += f"\n\nChat history:\n{history_text}"
 
-                    model = llm_config["default_model"]
+                    # 检查是否启用视觉功能
+                    vision_enabled = llm_config["vision_enabled"]
+                    if vision_enabled:
+                        visual_prompt = await get_active_prompt("visual_mode")
+                        if visual_prompt:
+                            agent_prompt += "\n\n" + visual_prompt
 
-                    from litellm import acompletion
-                    response = await acompletion(
-                        model=model,
-                        messages=[
-                            {"role": "system", "content": agent_prompt},
-                            {"role": "user", "content": message_data.content},
-                        ],
-                        temperature=0.7,
-                        max_tokens=2000,
-                        stream=True,
+                    # 创建多文档 Agent（带工具）
+                    agent, tracked = await create_multi_doc_agent(
+                        doc_client=doc_client,
+                        doc_ids=[doc.id for doc in documents],
+                        doc_names=doc_names,
+                        system_prompt=agent_prompt,
+                        include_vision_tools=vision_enabled,
                     )
 
-                    # 流式输出过滤器：实时拦截 tool_code 块，避免模型幻想输出工具调用代码
-                    _in_tool_block = False
-                    _stream_buf = ""
-                    _tool_start = "```tool_code"
+                    async for event in run_agent_streaming(agent, tracked, message_data.content):
+                        if event["type"] == "text_delta":
+                            full_text += str(event["content"])
+                            yield f"data: {json.dumps({'type': 'delta', 'content': event['content']})}\n\n"
+                        elif event["type"] == "tool_call":
+                            yield f"data: {json.dumps({'type': 'tool_call', 'tool': event['tool']})}\n\n"
+                        elif event["type"] == "done":
+                            citations = event.get("citations", [])
+                            full_text = str(event.get("full_text", full_text))
 
-                    async for chunk in response:
-                        if chunk.choices[0].delta.content:
-                            delta = chunk.choices[0].delta.content
-                            full_text += delta  # 完整文本仍需累积用于 done 事件清理
-                            _stream_buf += delta
-
-                            while _stream_buf:
-                                if not _in_tool_block:
-                                    # 检测 tool_code 块起始标记
-                                    idx = _stream_buf.find(_tool_start)
-                                    if idx == -1:
-                                        # 检查尾部是否可能是 tool_start 的前缀，避免截断
-                                        tail_len = 0
-                                        for i in range(1, len(_tool_start)):
-                                            if _stream_buf.endswith(_tool_start[:i]):
-                                                tail_len = i
-                                                break
-                                        if tail_len:
-                                            yield_part = _stream_buf[:-tail_len]
-                                            if yield_part:
-                                                yield f"data: {json.dumps({'type': 'delta', 'content': yield_part})}\n\n"
-                                            _stream_buf = _stream_buf[-tail_len:]
+                            # 构建多文档 citations（包裹 try-catch 防止后处理异常导致 done 事件丢失）
+                            try:
+                                accessed_by_doc = tracked.get_accessed_pages_by_doc()
+                                multi_citations = []
+                                for doc in documents:
+                                    doc_pages = accessed_by_doc.get(doc.id, [])
+                                    if doc_pages:
+                                        for page_num in doc_pages[:3]:
+                                            pages_data = doc.pages if hasattr(doc, 'pages') and doc.pages else []
+                                            for pd in pages_data:
+                                                if isinstance(pd, dict) and pd.get("page") == page_num:
+                                                    multi_citations.append({
+                                                        "page": page_num,
+                                                        "text": pd.get("content", "")[:2000],
+                                                        "node_title": f"{doc.original_name} - Page {page_num}",
+                                                        "document_id": doc.id,
+                                                    })
+                                                    break
+                                    else:
+                                        # 没有访问过的页面，添加兜底 citation
+                                        pages_data = doc.pages if hasattr(doc, 'pages') and doc.pages else []
+                                        if pages_data and isinstance(pages_data[0], dict):
+                                            pd = pages_data[0]
+                                            multi_citations.append({
+                                                "page": pd.get("page", 0),
+                                                "text": pd.get("content", "")[:2000],
+                                                "node_title": f"{doc.original_name} - Page {pd.get('page', 0)}",
+                                                "document_id": doc.id,
+                                            })
                                         else:
-                                            yield f"data: {json.dumps({'type': 'delta', 'content': _stream_buf})}\n\n"
-                                            _stream_buf = ""
-                                        break
-                                    else:
-                                        # 发现 tool_code，先输出标记之前的内容
-                                        yield_part = _stream_buf[:idx]
-                                        if yield_part:
-                                            yield f"data: {json.dumps({'type': 'delta', 'content': yield_part})}\n\n"
-                                        _stream_buf = _stream_buf[idx + len(_tool_start):]
-                                        _in_tool_block = True
-                                else:
-                                    # 在 tool_code 块内，等待结束标记 ```（可能前面有换行也可能没有）
-                                    end_idx = _stream_buf.find("\n```")
-                                    marker_len = 4
-                                    if end_idx < 0:
-                                        end_idx = _stream_buf.find("```")
-                                        marker_len = 3
-                                    if end_idx >= 0:
-                                        _stream_buf = _stream_buf[end_idx + marker_len:]
-                                        _in_tool_block = False
-                                    else:
-                                        _stream_buf = ""
-                                        break
-                    # 循环结束后，如果状态还在 tool_block 内但接着是正常内容，处理剩余
-                    if _in_tool_block and "\n" not in _stream_buf:
-                        # 不完整的 tool block 结尾，丢弃
-                        _in_tool_block = False
-                        _stream_buf = ""
-                    if _stream_buf and not _in_tool_block:
-                        yield f"data: {json.dumps({'type': 'delta', 'content': _stream_buf})}\n\n"
+                                            multi_citations.append({
+                                                "page": 0,
+                                                "text": doc.doc_description or "",
+                                                "node_title": doc.original_name,
+                                                "document_id": doc.id,
+                                            })
 
-                    # 构建多文档 citations，确保每篇文档至少有一条 citation
-                    multi_citations = []
-                    for doc in documents:
-                        pages = doc.pages if hasattr(doc, 'pages') and doc.pages else []
-                        has_pages = False
-                        if pages:
-                            for pd in pages[:3]:
-                                if isinstance(pd, dict):
-                                    has_pages = True
-                                    multi_citations.append({
-                                        "page": pd.get("page", 0),
-                                        "text": pd.get("content", "")[:2000],
-                                        "node_title": f"{doc.original_name} - Page {pd.get('page', 0)}",
-                                        "document_id": doc.id,
-                                    })
-                        # Markdown 等无页码文档：添加兜底 citation
-                        if not has_pages:
-                            multi_citations.append({
-                                "page": 0,
-                                "text": doc.doc_description or "",
-                                "node_title": doc.original_name,
-                                "document_id": doc.id,
-                            })
-                    citations = [c["page"] for c in multi_citations]
-                    # 清理工具引用
-                    cleaned_text = chat_service._cleanup_tool_references(full_text)
-                    # 发送清理后的完整文本
-                    yield f"data: {json.dumps({'type': 'done', 'citations': multi_citations[:5], 'full_text': cleaned_text})}\n\n"
+                                # 清理工具引用
+                                cleaned_text = chat_service._cleanup_tool_references(full_text)
+                            except Exception:
+                                cleaned_text = full_text
+                                multi_citations = []
+                            yield f"data: {json.dumps({'type': 'done', 'citations': multi_citations[:5], 'full_text': cleaned_text})}\n\n"
+                        elif event["type"] == "error":
+                            # 保留已累积的文本，追加错误提示
+                            full_text += f"\n\n---\n\n⚠️ Error: {event['message']}"
+                            yield f"data: {json.dumps({'type': 'error', 'message': event['message']})}\n\n"
             else:
                 # 系统查询模式：注入实际文档列表，让 AI 能准确回答
                 from sqlalchemy import select as sa_select
@@ -996,6 +967,13 @@ async def send_message_stream(
                 )
                 all_docs = result.scalars().all()
                 system_prompt = "你是一个有帮助的助手，可以回答各种问题。"
+                
+                # 如果是自动匹配场景，添加 auto_match 提示词
+                if session.is_auto:
+                    auto_match_prompt = await get_active_prompt("auto_match")
+                    if auto_match_prompt:
+                        system_prompt += f"\n\n{auto_match_prompt}"
+                
                 if all_docs:
                     doc_lines = []
                     for d in all_docs:
@@ -1021,12 +999,17 @@ async def send_message_stream(
                     elif event["type"] == "done":
                         yield f"data: {json.dumps({'type': 'done', 'citations': [], 'full_text': full_text})}\n\n"
                     elif event["type"] == "error":
-                        full_text = f"Error: {event['message']}"
+                        # 保留已累积的文本，追加错误提示
+                        full_text += f"\n\n---\n\n⚠️ Error: {event['message']}"
                         yield f"data: {json.dumps({'type': 'error', 'message': event['message']})}\n\n"
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            full_text = f"Error: {str(e)}"
+            # 保留已累积的文本，追加错误提示；如果完全无累积则用错误信息
+            if full_text:
+                full_text += f"\n\n---\n\n⚠️ Error: {str(e)}"
+            else:
+                full_text = f"Error: {str(e)}"
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
         finally:
             # Save AI response to DB
