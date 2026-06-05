@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react'
 import { Button, Typography, TreeSelect, Tooltip, App, Dropdown } from 'antd'
 import {
   SendOutlined,
@@ -800,7 +800,8 @@ const ChatPage = () => {
   }
 
   // 仅在新消息加入或切会话时滚动到底部，流式增量更新时不滚动
-  useEffect(() => {
+  // 使用 useLayoutEffect 确保在 DOM 提交后、浏览器绘制前同步滚动，避免用户看到顶部闪烁
+  useLayoutEffect(() => {
     if (shouldScrollRef.current) {
       scrollToBottom()
       shouldScrollRef.current = false
@@ -812,8 +813,8 @@ const ChatPage = () => {
     if (messagesContainerRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight
-      // 用户明显上滚（距离底部超过一行以上），标记为主动上滚
-      if (distanceFromBottom > 200) {
+      // 用户主动上滚任意距离（>50px）即停止自动跟随
+      if (distanceFromBottom > 50) {
         userScrolledUpRef.current = true
       }
       setShowScrollBtn(distanceFromBottom > 100)
@@ -1114,9 +1115,30 @@ const ChatPage = () => {
         },
         // onError: 错误
         (error) => {
+          // 先 flush 可能还在 RAF 队列中未写入消息的文本
+          if (pendingContent) {
+            const chunk = pendingContent
+            pendingContent = ''
+            rafScheduled = false
+            setMessages(prev => prev.map(msg =>
+              msg.id === aiMsgId
+                ? { ...msg, content: msg.content + chunk }
+                : msg
+            ))
+          }
           message.error(error)
-          // 移除空的 AI 消息
-          setMessages(prev => prev.filter(msg => msg.id !== aiMsgId))
+          // 如果 AI 消息已有内容，保留它并追加错误提示；只有空白时才移除
+          setMessages(prev => {
+            const aiMsg = prev.find(msg => msg.id === aiMsgId)
+            if (aiMsg && aiMsg.content.trim()) {
+              return prev.map(msg =>
+                msg.id === aiMsgId
+                  ? { ...msg, content: msg.content + '\n\n---\n\n⚠️ Response interrupted due to an error.' }
+                  : msg
+              )
+            }
+            return prev.filter(msg => msg.id !== aiMsgId)
+          })
         },
         // signal: 用于取消流式请求
         abortController.signal,
@@ -1135,9 +1157,30 @@ const ChatPage = () => {
       if (error?.name === 'AbortError' || error?.message?.includes('abort')) {
         // 静默处理：保留已收到的部分文本
       } else {
+        // 先 flush 可能还在 RAF 队列中的文本
+        if (pendingContent) {
+          const chunk = pendingContent
+          pendingContent = ''
+          rafScheduled = false
+          setMessages(prev => prev.map(msg =>
+            msg.id === aiMsgId
+              ? { ...msg, content: msg.content + chunk }
+              : msg
+          ))
+        }
         message.error('Failed to send message')
-        // 移除空的 AI 消息
-        setMessages(prev => prev.filter(msg => msg.id !== aiMsgId))
+        // 如果 AI 消息已有内容，保留；只有空白时才移除
+        setMessages(prev => {
+          const aiMsg = prev.find(msg => msg.id === aiMsgId)
+          if (aiMsg && aiMsg.content.trim()) {
+            return prev.map(msg =>
+              msg.id === aiMsgId
+                ? { ...msg, content: msg.content + '\n\n---\n\n⚠️ Response interrupted due to an error.' }
+                : msg
+            )
+          }
+          return prev.filter(msg => msg.id !== aiMsgId)
+        })
       }
     } finally {
       setSending(false)
@@ -1510,7 +1553,7 @@ const ChatPage = () => {
             treeCheckStrictly
             allowClear
             open={treeSelectOpen}
-            onDropdownVisibleChange={setTreeSelectOpen}
+            onOpenChange={setTreeSelectOpen}
             getPopupContainer={() => document.body}
             filterTreeNode={(input, node) =>
               String(node?.title ?? '').toLowerCase().includes(input.toLowerCase())
@@ -1833,8 +1876,8 @@ const ChatPage = () => {
           )}
         </div>
 
-        {/* Scroll to bottom button */}
-        {showScrollBtn && (
+        {/* Scroll to bottom button - only show when there are messages below */}
+        {showScrollBtn && messages.length > 0 && (
           <button
             onClick={scrollToBottom}
             style={{
