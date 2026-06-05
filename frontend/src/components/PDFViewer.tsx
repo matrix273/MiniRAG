@@ -210,6 +210,7 @@ export default function PDFViewer({ url, page, docId }: PDFViewerProps) {
           <iframe
             ref={iframeRef}
             src={iframeSrc}
+            key={page}
             style={{
               border: 'none',
               display: 'block',
