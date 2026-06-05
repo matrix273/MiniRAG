@@ -1108,12 +1108,29 @@ async def meta_processor(page_list, mode=None, toc_content=None, toc_page_list=N
         toc_with_page_number, incorrect_results = await fix_incorrect_toc_with_retries(toc_with_page_number, page_list, incorrect_results,start_index=start_index, max_attempts=3, model=opt.model, logger=logger)
         return toc_with_page_number
     else:
+        # Try to fix incorrect items even if accuracy is below threshold
+        if len(incorrect_results) > 0:
+            toc_with_page_number, incorrect_results = await fix_incorrect_toc_with_retries(toc_with_page_number, page_list, incorrect_results,start_index=start_index, max_attempts=2, model=opt.model, logger=logger)
+            
+        # If accuracy is still below threshold, try fallback mode
         if mode == 'process_toc_with_page_numbers':
             return await meta_processor(page_list, mode='process_toc_no_page_numbers', toc_content=toc_content, toc_page_list=toc_page_list, start_index=start_index, opt=opt, logger=logger)
         elif mode == 'process_toc_no_page_numbers':
             return await meta_processor(page_list, mode='process_no_toc', start_index=start_index, opt=opt, logger=logger)
         else:
-            raise Exception('Processing failed')
+            # Last resort: create a basic structure with all pages as single nodes
+            logger.warning(f"All TOC processing modes failed. Accuracy: {accuracy*100:.2f}%. Creating basic structure as fallback.")
+            basic_structure = []
+            for i in range(start_index, start_index + len(page_list)):
+                # Use first 50 chars of page text as title if available
+                page_text = page_list[i - start_index][0] if i - start_index < len(page_list) else ""
+                title = page_text[:50].strip() if page_text else f"Page {i}"
+                basic_structure.append({
+                    "structure": str(i),
+                    "title": title,
+                    "physical_index": i
+                })
+            return basic_structure
         
  
 async def process_large_node_recursively(node, page_list, opt=None, logger=None):
