@@ -5,7 +5,7 @@ from .indexer import (
     md_to_tree, page_index  # 向后兼容
 )
 from .parsers.office_to_tree import docx_to_tree, xlsx_to_tree, pptx_to_tree
-from .retrieval import get_document, get_document_structure, get_page_content
+from .retrieval import get_document, get_document_structure, get_page_content, get_page_images_info
 from .vision import pdf_pages_to_images, pdf_pages_to_base64
 
 __all__ = [
@@ -31,6 +31,7 @@ __all__ = [
     "get_document",
     "get_document_structure",
     "get_page_content",
+    "get_page_images_info",
     
     # 视觉
     "pdf_pages_to_images",
