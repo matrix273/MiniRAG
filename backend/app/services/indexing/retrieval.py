@@ -190,6 +190,62 @@ def get_page_content(documents: dict, doc_id: str, pages: str) -> str:
     return json.dumps(content, ensure_ascii=False)
 
 
+def get_page_images_info(documents: dict, doc_id: str) -> str:
+    """
+    Return which pages have embedded images and their counts.
+    
+    Returns JSON dict with:
+    - {doc_id, page_count, pages_with_images: [{page, image_count}, ...], total_images}
+    
+    This is TEXT metadata only — use get_page_images() for actual image data.
+    """
+    doc_info = documents.get(doc_id)
+    if not doc_info:
+        return json.dumps({'error': f'Document {doc_id} not found'})
+    
+    if doc_info.get('type') != 'pdf':
+        return json.dumps({'error': 'Image detection is only available for PDF documents'})
+    
+    page_count = _count_pages(doc_info)
+    cached_pages = doc_info.get('pages')
+    
+    pages_with_images = []
+    total_images = 0
+    
+    if cached_pages:
+        for p in cached_pages:
+            count = p.get('image_count', 0)
+            if count > 0:
+                pages_with_images.append({
+                    'page': p['page'],
+                    'image_count': count,
+                })
+                total_images += count
+    else:
+        # Fallback: if pages not cached, use PyMuPDF directly
+        import pymupdf
+        try:
+            mu_doc = pymupdf.open(doc_info['path'])
+            for i in range(len(mu_doc)):
+                count = len(mu_doc[i].get_images())
+                if count > 0:
+                    pages_with_images.append({
+                        'page': i + 1,
+                        'image_count': count,
+                    })
+                    total_images += count
+            mu_doc.close()
+        except Exception as e:
+            return json.dumps({'error': f'Failed to detect images: {e}'})
+    
+    return json.dumps({
+        'doc_id': doc_id,
+        'page_count': page_count,
+        'pages_with_images': pages_with_images,
+        'total_image_count': total_images,
+    }, ensure_ascii=False)
+
+
 def get_page_images(documents: dict, doc_id: str, pages: str, output_dir: str = None, dpi: int = 150) -> str:
     """
     Retrieve page images for a document.
