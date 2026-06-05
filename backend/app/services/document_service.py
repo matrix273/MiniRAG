@@ -438,6 +438,12 @@ class ChatService:
         rag_template = await get_active_prompt("rag_template")
         if rag_template:
             agent_prompt = f"{agent_prompt}\n\n{rag_template}"
+        agent_prompt = agent_prompt.replace("{doc_id}", "the appropriate document ID from the list below")
+
+        # 加载多文档模式指令
+        multi_doc_note = await get_active_prompt("multi_doc_note")
+        if multi_doc_note:
+            agent_prompt += f"\n\n{multi_doc_note}"
 
         # Build combined document context
         doc_sections = []
@@ -456,6 +462,10 @@ class ChatService:
 
         agent_prompt += "\n\n=== Available Documents ===\n\n"
         agent_prompt += "\n\n---\n\n".join(doc_sections)
+
+        # 添加文档 ID 映射（用于 citation）
+        doc_id_map = "\n".join(f"  - {doc.original_name}: {doc.id}" for doc in documents)
+        agent_prompt += f"\n\nDocument IDs for citation:\n{doc_id_map}"
 
         # Add chat history
         if chat_history:
